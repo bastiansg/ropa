@@ -1,0 +1,4 @@
+{
+    "python.analysis.typeCheckingMode": "standard",
+    "remote.autoForwardPortsFallback": 0
+}

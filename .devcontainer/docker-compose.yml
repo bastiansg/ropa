@@ -1,0 +1,17 @@
+services:
+    ropa-devcontainer:
+        image: ropa-devcontainer
+        container_name: ropa-devcontainer
+        build:
+            context: ..
+            dockerfile: .devcontainer/Dockerfile
+        volumes:
+            - ..:/workspace:cached
+        entrypoint: ["tail", "-f", "/dev/null"]
+        networks:
+            - ropa
+
+networks:
+    ropa:
+        name: ropa
+        driver: bridge
