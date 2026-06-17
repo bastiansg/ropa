@@ -1,0 +1,24 @@
+services:
+    ropa-core:
+        image: ropa-core
+        container_name: ropa-core
+        build:
+            context: .
+            dockerfile: ./docker/core/Dockerfile
+        networks:
+            - ropa
+
+    ropa-app:
+        image: ropa-app
+        container_name: ropa-app
+        build:
+            context: .
+            dockerfile: ./docker/app/Dockerfile
+        restart: unless-stopped
+        networks:
+            - ropa
+
+networks:
+    ropa:
+        name: ropa
+        driver: bridge

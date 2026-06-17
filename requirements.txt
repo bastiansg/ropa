@@ -1,1 +1,3 @@
-
+# Aureka packages
+multi_agents==2.0.1
+llm_agents==2.0.12

@@ -1,0 +1,5 @@
+[pip]
+find-links = [
+    "https://github.com/aureka-team/llm-agents/releases/expanded_assets/index",
+    "https://github.com/aureka-team/multi-agents/releases/expanded_assets/index",
+]
