@@ -1,6 +1,4 @@
-LIMIT ?= 20
-
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build test-ay-not-dead
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build test test-ay-not-dead
 
 
 core-build:
@@ -12,6 +10,10 @@ core-run:
 
 devcontainer-build: core-build
 	docker compose -f .devcontainer/docker-compose.yml build ropa-devcontainer
+
+
+test: app-build
+	docker compose run --rm ropa-app pytest -s tests
 
 
 app-build: core-build
@@ -27,7 +29,3 @@ app-stop:
 	docker stop ropa-app
 
 app-restart: app-stop app-up
-
-
-test-ay-not-dead: app-build
-	docker compose run --rm ropa-app python3 -m ropa.scripts.test_ay_not_dead_collector --limit $(LIMIT)

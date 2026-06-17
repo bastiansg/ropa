@@ -1,4 +1,8 @@
-"""Catalog collectors."""
-
 from .ay_not_dead import AyNotDeadCollector
-from ropa.meta.interfaces import ShopifyCatalogItem, ShopifyCollector
+from .bolivia_universo import BoliviaUniversoCollector
+from ropa.meta.interfaces import (
+    CatalogCollector,
+    CatalogItem,
+    ShopifyCatalogItem,
+    ShopifyCollector,
+)

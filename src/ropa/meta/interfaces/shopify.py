@@ -8,23 +8,13 @@ from collections.abc import Iterator
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
-from pydantic import BaseModel, ConfigDict
+from ropa.meta.interfaces.catalog import CatalogCollector, CatalogItem
 
 
 JsonObject = dict[str, Any]
 
 
-class ShopifyCatalogItem(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    product_id: int
-    title: str
-    url: str
-    description: str
-    image_urls: tuple[str, ...]
-    color: str | None
-    category: str
-    available_sizes: tuple[str, ...]
+ShopifyCatalogItem = CatalogItem
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -41,16 +31,21 @@ class _HTMLTextExtractor(HTMLParser):
         return " ".join(self.parts)
 
 
-class ShopifyCollector:
+class ShopifyCollector(CatalogCollector):
     """Collect public catalog data from Shopify storefront JSON endpoints."""
 
     color_option_names = frozenset({"color", "colour"})
     size_option_names = frozenset({"size", "talle", "tamaño", "tamano"})
 
     def __init__(
-        self, base_url: str, page_size: int = 250, timeout_seconds: int = 30
+        self,
+        base_url: str,
+        vendor: str,
+        page_size: int = 250,
+        timeout_seconds: int = 30,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.vendor = vendor
         self.page_size = page_size
         self.timeout_seconds = timeout_seconds
 
@@ -125,6 +120,7 @@ class ShopifyCollector:
 
         return (
             ShopifyCatalogItem(
+                vendor=self.vendor,
                 product_id=int(product["id"]),
                 title=str(product.get("title") or ""),
                 url=self.product_url(product),
