@@ -8,6 +8,7 @@ from ropa.collectors import (
     AyNotDeadCollector,
     BoliviaUniversoCollector,
     CatalogItem,
+    RopaRevolverCollector,
 )
 
 
@@ -70,3 +71,10 @@ def test_bolivia_universo_collector_returns_catalog_items() -> None:
     items = tuple(islice(collector.iter_items(), ROW_LIMIT))
 
     assert_collector_returns_minimum_items("Bolivia Universo", items)
+
+
+def test_ropa_revolver_collector_returns_catalog_items() -> None:
+    collector = RopaRevolverCollector()
+    items = tuple(islice(collector.iter_items(), ROW_LIMIT))
+
+    assert_collector_returns_minimum_items("Ropa Revolver", items)
