@@ -1,0 +1,1 @@
+- Genre and Price at `CatalogItem`

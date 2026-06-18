@@ -12,6 +12,19 @@ devcontainer-build: core-build
 	docker compose -f .devcontainer/docker-compose.yml build ropa-devcontainer
 
 
+redis-start:
+	docker compose up -d ropa-redis
+
+redis-stop:
+	docker compose stop ropa-redis
+
+redis-flush:
+	docker compose exec ropa-redis redis-cli FLUSHALL
+
+redis-restart: redis-stop
+	docker compose up -d ropa-redis
+
+
 test: app-build
 	docker compose run --rm ropa-app pytest -s tests
 
