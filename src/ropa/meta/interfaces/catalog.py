@@ -1,20 +1,27 @@
 from abc import ABC, abstractmethod
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StrictStr,
+    PositiveInt,
+    PositiveFloat,
+)
 
 
 class CatalogItem(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    vendor: str
-    product_id: int
-    title: str
-    url: str
-    description: str
-    image_urls: tuple[str, ...]
-    color: str | None
-    category: str
-    available_sizes: tuple[str, ...]
+    vendor: StrictStr
+    product_id: PositiveInt
+    title: StrictStr
+    url: StrictStr
+    description: StrictStr
+    image_urls: tuple[StrictStr, ...]
+    color: StrictStr
+    gender: StrictStr
+    price: PositiveFloat
+    category: StrictStr
+    available_sizes: tuple[StrictStr, ...]
 
 
 class CatalogCollector(ABC):

@@ -1,6 +1,9 @@
 import json
 
+from decimal import Decimal
+from re import findall
 from typing import Any, cast
+from unicodedata import normalize
 
 from html import unescape
 from http.cookiejar import CookieJar
@@ -22,11 +25,22 @@ from urllib.request import (
 )
 
 from pydantic import BaseModel, ConfigDict
-
 from ropa.meta.interfaces import CatalogCollector, CatalogItem
 
 
 JsonObject = dict[str, Any]
+BOLIVIA_UNIVERSO_GENDERS = {
+    "man": {
+        "hombre",
+        "hombres",
+    },
+    "woman": {
+        "mujer",
+        "mujeres",
+        "dama",
+        "damas",
+    },
+}
 
 
 class _ListingLink(BaseModel):
@@ -52,6 +66,7 @@ class _ProductDetails(BaseModel):
     description: str
     image_urls: tuple[str, ...]
     color: str | None
+    price: Decimal | None
 
 
 def _attrs(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -276,6 +291,7 @@ class _ProductDetailParser(HTMLParser):
                 )
             ),
             color=self.color,
+            price=self._price(),
         )
 
     def _load_product_data(self) -> None:
@@ -286,6 +302,20 @@ class _ProductDetailParser(HTMLParser):
         data = json.loads(raw_json)
         if isinstance(data, dict) and data.get("@type") == "Product":
             self.product_data = data
+
+    def _price(self) -> Decimal | None:
+        offers = self.product_data.get("offers") or ()
+        raw_offers = (offers,)
+        if not isinstance(offers, dict):
+            raw_offers = offers
+
+        prices = (
+            offer.get("price")
+            for offer in raw_offers
+            if isinstance(offer, dict) and offer.get("price")
+        )
+
+        return next((Decimal(str(price)) for price in prices), None)
 
 
 class _SizeParser(HTMLParser):
@@ -375,9 +405,30 @@ class BoliviaUniversoCollector(CatalogCollector):
                     description=details.description,
                     image_urls=details.image_urls or card.image_urls,
                     color=color,
+                    gender=self.gender(
+                        category,
+                        details.title,
+                        card.title,
+                        card.url,
+                        details.description,
+                    ),
+                    price=details.price,
                     category=category,
                     available_sizes=self.available_sizes(card.product_id),
                 )
+
+    def gender(self, *values: object) -> str:
+        """Infer item gender from Bolivia Universo listing and product text."""
+        tokens = self._gender_tokens(values)
+
+        return next(
+            (
+                gender
+                for gender, gender_tokens in BOLIVIA_UNIVERSO_GENDERS.items()
+                if tokens & gender_tokens
+            ),
+            "unisex",
+        )
 
     def iter_listing_links(self) -> Iterator[_ListingLink]:
         """Yield configured or discovered listing links."""
@@ -457,6 +508,12 @@ class BoliviaUniversoCollector(CatalogCollector):
             )
 
         return link.title or path or "Uncategorized"
+
+    def _gender_tokens(self, values: tuple[object, ...]) -> set[str]:
+        text = " ".join(str(value or "") for value in values)
+        ascii_text = normalize("NFKD", text).encode("ascii", "ignore").decode()
+
+        return set(findall(r"[a-zA-Z]+", ascii_text.casefold()))
 
     def _product_cards(self, html: str) -> Iterator[_ProductCard]:
         parser = _ProductCardParser(self.base_url)

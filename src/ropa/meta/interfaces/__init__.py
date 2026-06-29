@@ -1,2 +1,2 @@
-from .catalog import CatalogCollector, CatalogItem
-from .shopify import ShopifyCatalogItem, ShopifyCollector
+from .catalog import CatalogCollector, CatalogItem  # noqa
+from .shopify import ShopifyCollector  # noqa

@@ -1,8 +1,7 @@
-from collections.abc import Iterable, Iterator
+from decimal import Decimal
+from collections.abc import Iterable
 from itertools import islice
-from typing import Literal
 
-from pydantic_ai import BinaryContent
 from rich.table import Table
 from rich.console import Console
 
@@ -12,8 +11,7 @@ from ropa.collectors import (
     CatalogItem,
     RopaRevolverCollector,
 )
-from ropa.llm_agents import SizeTableExtractorOutput
-from ropa.meta.schema import BodyMeasurements
+from ropa.collectors.bolivia_universo import _ProductDetailParser
 
 
 PRINT_LIMIT = 5
@@ -52,28 +50,6 @@ def catalog_table(
     return table
 
 
-def body_measurements_table(
-    title: str,
-    gender: str,
-    measurements: Iterable[BodyMeasurements],
-) -> Table:
-    table = Table(title=f"{title}: {gender.title()} body measurements")
-    for field_name in BodyMeasurements.model_fields:
-        table.add_column(field_name.replace("_", " ").title())
-
-    rows = (
-        tuple(
-            format_value(getattr(measurement, field_name))
-            for field_name in BodyMeasurements.model_fields
-        )
-        for measurement in measurements
-    )
-    for row in rows:
-        table.add_row(*row)
-
-    return table
-
-
 def assert_collector_returns_minimum_items(
     collector_name: str, items: tuple[CatalogItem, ...]
 ) -> None:
@@ -92,95 +68,91 @@ def test_ay_not_dead_collector_returns_catalog_items() -> None:
     collector = AyNotDeadCollector()
     items = tuple(collector.collect_items(limit=MINIMUM_COLLECTED_ITEMS))
 
-    console = Console()
-    for gender, measurements in collector.body_measurements.items():
-        console.print(
-            body_measurements_table("Ay Not Dead", gender, measurements)
-        )
-
     assert_collector_returns_minimum_items("Ay Not Dead", items)
 
 
-def test_ay_not_dead_collector_extracts_gender_size_guide_image_urls() -> None:
-    class FixtureAyNotDeadCollector(AyNotDeadCollector):
-        def _get_json(
-            self, path: str, params: dict[str, int | str]
-        ) -> dict[str, object]:
-            return {
-                "page": {
-                    "body_html": (
-                        f'<div><img src="/cdn/shop/files/{path.split("/")[-1]}.jpg">'
-                        "</div>"
-                    ),
-                },
-            }
-
-    collector = FixtureAyNotDeadCollector()
-
-    assert collector.size_guide_image_url() == (
-        "https://aynotdead.com/cdn/shop/files/"
-        "guia-de-talles-hombre.json.jpg"
-    )
-    assert collector.size_guide_image_url("woman") == (
-        "https://aynotdead.com/cdn/shop/files/"
-        "guia-de-talles-test.json.jpg"
-    )
-
-
-def test_ay_not_dead_collector_extracts_size_guides_when_collecting() -> None:
-    class FixtureSizeTableExtractor:
-        async def generate_cached(
-            self,
-            user_prompt: str,
-            user_content: BinaryContent,
-        ) -> SizeTableExtractorOutput:
-            size_label = "M" if "woman" in user_prompt else "S"
-
-            return SizeTableExtractorOutput(
-                body_measurements=[
-                    BodyMeasurements(
-                        size_label=size_label,
-                        chest_circumference=90,
-                        waist_circumference=70,
-                        hip_circumference=95,
-                    ),
-                ],
-            )
-
-    class FixtureAyNotDeadCollector(AyNotDeadCollector):
-        def iter_items(self) -> Iterator[CatalogItem]:
-            return iter(())
-
-        def size_guide_image_url(
-            self, gender: Literal["man", "woman"] = "man"
-        ) -> str:
-            return f"https://example.com/{gender}.jpg"
-
-        def _get_bytes(self, url: str) -> bytes:
-            return b"image"
-
-    collector = FixtureAyNotDeadCollector()
-    collector.size_table_extractor = FixtureSizeTableExtractor()
-
-    assert collector.collect_items() == []
-    assert collector.body_measurements == {
-        "man": [
-            BodyMeasurements(
-                size_label="S",
-                chest_circumference=90,
-                waist_circumference=70,
-                hip_circumference=95,
-            ),
-        ],
-        "woman": [
-            BodyMeasurements(
-                size_label="M",
-                chest_circumference=90,
-                waist_circumference=70,
-                hip_circumference=95,
-            ),
-        ],
+def test_ay_not_dead_collector_collects_gender_and_price() -> None:
+    product = {
+        "id": 1,
+        "title": "Campera Hombre",
+        "handle": "campera-hombre",
+        "body_html": "",
+        "options": (
+            {"name": "Color", "position": 1},
+            {"name": "Talle", "position": 2},
+        ),
+        "variants": (
+            {
+                "available": False,
+                "option1": "Negro",
+                "option2": "S",
+                "price": "100.00",
+            },
+            {
+                "available": True,
+                "option1": "Negro",
+                "option2": "M",
+                "price": "120.50",
+            },
+        ),
     }
+
+    item = next(AyNotDeadCollector().product_to_items(product, "Hombres"))
+
+    assert item.gender == "man"
+    assert item.price == Decimal("120.50")
+
+
+def test_bolivia_universo_collector_collects_gender_and_price() -> None:
+    parser = _ProductDetailParser("https://boliviauniverso.com")
+    parser.feed(
+        """
+        <script type="application/ld+json">
+        {
+            "@type": "Product",
+            "name": "Vestido",
+            "description": "Producto para mujer",
+            "image": "/vestido.jpg",
+            "offers": {"price": "12345.67"}
+        }
+        </script>
+        """
+    )
+
+    collector = BoliviaUniversoCollector()
+    details = parser.details()
+
+    assert collector.gender("categorias/mujeres", details.title) == "woman"
+    assert details.price == Decimal("12345.67")
+
+
+def test_ropa_revolver_collector_collects_gender_and_price() -> None:
+    product = {
+        "id": 1,
+        "title": "Pantalon Mujer",
+        "handle": "pantalon-mujer",
+        "product_type": "Mujer",
+        "body_html": "",
+        "options": (
+            {"name": "Color", "position": 1},
+            {"name": "Talle", "position": 2},
+        ),
+        "variants": (
+            {
+                "available": True,
+                "option1": "Azul",
+                "option2": "S",
+                "price": "220.00",
+            },
+        ),
+    }
+
+    collector = RopaRevolverCollector()
+
+    item = next(collector.product_to_items(product, collector.category(product)))
+
+    assert item.gender == "woman"
+    assert item.price == Decimal("220.00")
 
 
 def test_bolivia_universo_collector_returns_catalog_items() -> None:

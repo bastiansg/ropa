@@ -1,5 +1,6 @@
 import json
 
+from decimal import Decimal
 from typing import Any, cast
 from itertools import chain, groupby
 
@@ -12,9 +13,6 @@ from ropa.meta.interfaces.catalog import CatalogCollector, CatalogItem
 
 
 JsonObject = dict[str, Any]
-
-
-ShopifyCatalogItem = CatalogItem
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -34,8 +32,8 @@ class _HTMLTextExtractor(HTMLParser):
 class ShopifyCollector(CatalogCollector):
     """Collect public catalog data from Shopify storefront JSON endpoints."""
 
-    color_option_names = frozenset({"color", "colour"})
-    size_option_names = frozenset({"size", "talle", "tamaño", "tamano"})
+    color_option_names = {"color", "colour"}
+    size_option_names = {"size", "talle", "tamaño", "tamano"}
 
     def __init__(
         self,
@@ -49,11 +47,11 @@ class ShopifyCollector(CatalogCollector):
         self.page_size = page_size
         self.timeout_seconds = timeout_seconds
 
-    def collect_items(self) -> list[ShopifyCatalogItem]:
+    def collect_items(self) -> list[CatalogItem]:
         """Collect all public catalog items grouped by category and color."""
         return list(self.iter_items())
 
-    def iter_items(self) -> Iterator[ShopifyCatalogItem]:
+    def iter_items(self) -> Iterator[CatalogItem]:
         """Yield public catalog items grouped by collection category and color."""
         seen_keys: set[tuple[int, str | None, str]] = set()
         categorized_product_ids: set[int] = set()
@@ -107,19 +105,14 @@ class ShopifyCollector(CatalogCollector):
 
     def product_to_items(
         self, product: JsonObject, category: str
-    ) -> Iterator[ShopifyCatalogItem]:
+    ) -> Iterator[CatalogItem]:
         """Normalize one Shopify product into item records."""
         color_position = self._option_position(product, self.color_option_names)
         size_position = self._option_position(product, self.size_option_names)
-        color_groups = {
-            color: self._available_sizes(variants, size_position)
-            for color, variants in self._group_variants_by_color(
-                product, color_position
-            ).items()
-        }
+        variant_groups = self._group_variants_by_color(product, color_position)
 
         return (
-            ShopifyCatalogItem(
+            CatalogItem(
                 vendor=self.vendor,
                 product_id=int(product["id"]),
                 title=str(product.get("title") or ""),
@@ -127,11 +120,17 @@ class ShopifyCollector(CatalogCollector):
                 description=self.description(product),
                 image_urls=self.image_urls(product),
                 color=color,
+                gender=self.gender(product, category),
+                price=self._price(variants),
                 category=category,
-                available_sizes=sizes,
+                available_sizes=self._available_sizes(variants, size_position),
             )
-            for color, sizes in color_groups.items()
+            for color, variants in variant_groups.items()
         )
+
+    def gender(self, product: JsonObject, category: str) -> str:
+        """Return item gender when a collector can infer it."""
+        return "unisex"
 
     def product_url(self, product: JsonObject) -> str:
         """Build the canonical storefront URL for a product."""
@@ -188,7 +187,7 @@ class ShopifyCollector(CatalogCollector):
             return json.load(response)
 
     def _option_position(
-        self, product: JsonObject, names: frozenset[str]
+        self, product: JsonObject, names: set[str]
     ) -> int | None:
         matches = (
             int(option["position"])
@@ -234,6 +233,18 @@ class ShopifyCollector(CatalogCollector):
         )
 
         return tuple(sizes)
+
+    def _price(self, variants: tuple[JsonObject, ...]) -> Decimal | None:
+        prices = (
+            variant.get("price")
+            for variant in chain(
+                (variant for variant in variants if variant.get("available")),
+                variants,
+            )
+            if variant.get("price")
+        )
+
+        return next((Decimal(str(price)) for price in prices), None)
 
     def _variant_option(
         self, variant: JsonObject, position: int | None
