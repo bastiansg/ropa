@@ -1,4 +1,6 @@
 pytest==9.1.0
+stamina==26.1.0
+aiocache[redis]==0.12.3
 
 # Aureka packages
 multi_agents==2.0.1

@@ -1,18 +1,18 @@
 import json
 
 from re import findall
+from typing import cast
 from unicodedata import normalize
 from collections.abc import Iterator
 from urllib.parse import urlencode, urljoin
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from ropa.meta.interfaces import CatalogItem, ShopifyCollector
 
-from ropa.meta.interfaces.shopify import JsonObject
+from ropa.meta.interfaces.shopify import JsonObject, _request_text
 
 
-HEADERS = {
-    "Accept": "application/json",
+BASE_HEADERS = {
     "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) "
@@ -20,6 +20,8 @@ HEADERS = {
         "Chrome/125.0 Safari/537.36"
     ),
 }
+JSON_HEADERS = {"Accept": "application/json", **BASE_HEADERS}
+HTML_HEADERS = {"Accept": "text/html,application/xhtml+xml", **BASE_HEADERS}
 ROPA_REVOLVER_GENDERS = {
     "man": {"hombre", "hombres"},
     "woman": {"mujer", "mujeres"},
@@ -80,7 +82,14 @@ class RopaRevolverCollector(ShopifyCollector):
         query = urlencode(params)
         url = urljoin(f"{self.base_url}/", path.lstrip("/"))
         request_url = f"{url}?{query}" if query else url
-        request = Request(request_url, headers=HEADERS)
+        request = Request(request_url, headers=JSON_HEADERS)
 
-        with urlopen(request, timeout=self.timeout_seconds) as response:
-            return json.load(response)
+        return cast(
+            JsonObject,
+            json.loads(_request_text(request, self.timeout_seconds)),
+        )
+
+    def _get_text(self, url: str) -> str:
+        request = Request(urljoin(self.base_url, url), headers=HTML_HEADERS)
+
+        return _request_text(request, self.timeout_seconds)

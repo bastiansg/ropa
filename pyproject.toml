@@ -14,6 +14,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+[project.scripts]
+collect_data = "ropa.scripts.collect_data:main"
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 

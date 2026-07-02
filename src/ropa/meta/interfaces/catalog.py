@@ -21,7 +21,9 @@ class CatalogItem(BaseModel):
     gender: StrictStr
     price: PositiveFloat
     category: StrictStr
+    all_sizes: tuple[StrictStr, ...]
     available_sizes: tuple[StrictStr, ...]
+    size_guide_url: StrictStr | None
 
 
 class CatalogCollector(ABC):

@@ -1,6 +1,7 @@
 import json
 
-from decimal import Decimal
+import stamina
+
 from re import findall
 from typing import Any, cast
 from unicodedata import normalize
@@ -9,6 +10,7 @@ from html import unescape
 from http.cookiejar import CookieJar
 from html.parser import HTMLParser
 from collections.abc import Iterable, Iterator
+from urllib.error import HTTPError
 from urllib.parse import (
     parse_qsl,
     unquote,
@@ -18,14 +20,23 @@ from urllib.parse import (
     urlunsplit,
 )
 
+from urllib.response import addinfourl
 from urllib.request import (
     HTTPCookieProcessor,
+    OpenerDirector,
     Request,
     build_opener,
 )
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StrictStr,
+    PositiveFloat,
+    PositiveInt,
+)
 from ropa.meta.interfaces import CatalogCollector, CatalogItem
+from ropa.meta.size_guides import SizeGuideLinkParser
 
 
 JsonObject = dict[str, Any]
@@ -43,30 +54,55 @@ BOLIVIA_UNIVERSO_GENDERS = {
 }
 
 
+@stamina.retry(
+    on=HTTPError,
+    attempts=10,
+    timeout=None,
+    wait_initial=30,
+    wait_max=600,
+)
+def _open_request(
+    opener: OpenerDirector,
+    request: Request,
+    timeout_seconds: int,
+) -> addinfourl:
+    return opener.open(request, timeout=timeout_seconds)
+
+
+def _request_text(
+    opener: OpenerDirector,
+    request: Request,
+    timeout_seconds: int,
+) -> str:
+    with _open_request(opener, request, timeout_seconds) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
 class _ListingLink(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    url: str
-    title: str
+    url: StrictStr
+    title: StrictStr
 
 
 class _ProductCard(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    product_id: int
-    title: str
-    url: str
-    image_urls: tuple[str, ...]
+    product_id: PositiveInt
+    title: StrictStr
+    url: StrictStr
+    image_urls: tuple[StrictStr, ...]
 
 
 class _ProductDetails(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    title: str
-    description: str
-    image_urls: tuple[str, ...]
-    color: str | None
-    price: Decimal | None
+    title: StrictStr
+    description: StrictStr
+    image_urls: tuple[StrictStr, ...]
+    color: StrictStr | None
+    price: PositiveFloat
+    size_guide_url: StrictStr | None
 
 
 def _attrs(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -220,19 +256,25 @@ class _ProductCardParser(HTMLParser):
 
 
 class _ProductDetailParser(HTMLParser):
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, product_url: str | None = None) -> None:
         super().__init__()
         self.base_url = base_url
+        self.product_url = product_url or base_url
         self.product_data: JsonObject = {}
         self.color: str | None = None
+        self.size_guide_url: str | None = None
         self._script_depth: int | None = None
         self._script_parts: list[str] = []
         self._colors_depth: int | None = None
+        self._guide_parser: SizeGuideLinkParser | None = None
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         tag_attrs = _attrs(attrs)
+        if self._guide_parser is not None:
+            self._guide_parser.handle_starttag(tag, attrs)
+
         if tag == "script" and tag_attrs.get("type") == "application/ld+json":
             self._script_depth = 1
             self._script_parts = []
@@ -260,6 +302,9 @@ class _ProductDetailParser(HTMLParser):
             self._script_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        if self._guide_parser is not None:
+            self._guide_parser.handle_endtag(tag)
+
         if self._script_depth is not None:
             self._script_depth -= 1
             if self._script_depth:
@@ -292,7 +337,16 @@ class _ProductDetailParser(HTMLParser):
             ),
             color=self.color,
             price=self._price(),
+            size_guide_url=self.size_guide_url,
         )
+
+    def feed(self, data: str) -> None:
+        self._guide_parser = SizeGuideLinkParser(
+            self.base_url,
+            self.product_url,
+        )
+        super().feed(data)
+        self.size_guide_url = self._guide_parser.url()
 
     def _load_product_data(self) -> None:
         raw_json = "".join(self._script_parts).strip()
@@ -303,40 +357,45 @@ class _ProductDetailParser(HTMLParser):
         if isinstance(data, dict) and data.get("@type") == "Product":
             self.product_data = data
 
-    def _price(self) -> Decimal | None:
+    def _price(self) -> PositiveFloat:
         offers = self.product_data.get("offers") or ()
         raw_offers = (offers,)
         if not isinstance(offers, dict):
             raw_offers = offers
 
         prices = (
-            offer.get("price")
+            float(str(price))
             for offer in raw_offers
-            if isinstance(offer, dict) and offer.get("price")
+            if isinstance(offer, dict)
+            for price in (offer.get("price"),)
+            if price
         )
 
-        return next((Decimal(str(price)) for price in prices), None)
+        return cast(PositiveFloat, next(prices))
 
 
 class _SizeParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.sizes: list[str] = []
+        self.all_sizes: list[str] = []
+        self.available_sizes: list[str] = []
         self._label_depth: int | None = None
         self._label_parts: list[str] = []
+        self._label_available = False
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         tag_attrs = _attrs(attrs)
-        if tag != "label" or self._label_depth is not None:
-            return
-
-        if "disabled" in tag_attrs.get("class", "").split():
+        if tag not in {"fieldset", "label"} or self._label_depth is not None:
             return
 
         self._label_depth = 1
         self._label_parts = []
+        self._label_available = (
+            tag == "label"
+            and "disabled" not in tag_attrs.get("class", "").split()
+        )
 
     def handle_data(self, data: str) -> None:
         if self._label_depth is not None:
@@ -346,15 +405,19 @@ class _SizeParser(HTMLParser):
         if self._label_depth is None:
             return
 
-        if tag != "label":
+        if tag not in {"fieldset", "label"}:
             return
 
         value = _clean_text("".join(self._label_parts))
         if value:
-            self.sizes.append(value)
+            self.all_sizes.append(value)
+
+        if value and self._label_available:
+            self.available_sizes.append(value)
 
         self._label_depth = None
         self._label_parts = []
+        self._label_available = False
 
 
 class BoliviaUniversoCollector(CatalogCollector):
@@ -377,7 +440,7 @@ class BoliviaUniversoCollector(CatalogCollector):
         self.max_pages_per_listing = max_pages_per_listing
         self.opener = build_opener(HTTPCookieProcessor(CookieJar()))
         self._details: dict[str, _ProductDetails] = {}
-        self._sizes: dict[int, tuple[str, ...]] = {}
+        self._sizes: dict[int, tuple[tuple[str, ...], tuple[str, ...]]] = {}
 
     def collect_items(self) -> list[CatalogItem]:
         """Collect all public catalog items."""
@@ -385,13 +448,17 @@ class BoliviaUniversoCollector(CatalogCollector):
 
     def iter_items(self) -> Iterator[CatalogItem]:
         """Yield catalog items from discovered Bolivia Universo listings."""
-        seen_keys: set[tuple[int, str | None, str]] = set()
+        seen_keys: set[tuple[int, str, str]] = set()
 
         for link in self.iter_listing_links():
             for card in self.iter_listing_cards(link.url):
                 details = self.product_details(card.url)
                 category = self.category_name(link)
                 color = details.color
+                price = details.price
+                if color is None:
+                    continue
+
                 key = (card.product_id, color, category)
                 if key in seen_keys:
                     continue
@@ -412,9 +479,11 @@ class BoliviaUniversoCollector(CatalogCollector):
                         card.url,
                         details.description,
                     ),
-                    price=details.price,
+                    price=price,
                     category=category,
+                    all_sizes=self.all_sizes(card.product_id),
                     available_sizes=self.available_sizes(card.product_id),
+                    size_guide_url=details.size_guide_url,
                 )
 
     def gender(self, *values: object) -> str:
@@ -472,14 +541,24 @@ class BoliviaUniversoCollector(CatalogCollector):
     def product_details(self, url: str) -> _ProductDetails:
         """Return cached product details parsed from the product page."""
         if url not in self._details:
-            parser = _ProductDetailParser(self.base_url)
+            product_url = urljoin(self.base_url, url)
+            parser = _ProductDetailParser(self.base_url, product_url)
             parser.feed(self._get_text(url))
             self._details[url] = parser.details()
 
         return self._details[url]
 
+    def all_sizes(self, product_id: int) -> tuple[str, ...]:
+        """Return cached all sizes from the product variant endpoint."""
+        return self._product_sizes(product_id)[0]
+
     def available_sizes(self, product_id: int) -> tuple[str, ...]:
         """Return cached available sizes from the product variant endpoint."""
+        return self._product_sizes(product_id)[1]
+
+    def _product_sizes(
+        self, product_id: int
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         if product_id not in self._sizes:
             data = self._post_json(
                 "/ajax/producto/varianteAjax.php",
@@ -491,7 +570,10 @@ class BoliviaUniversoCollector(CatalogCollector):
             )
             parser = _SizeParser()
             parser.feed(str(data.get("1") or ""))
-            self._sizes[product_id] = tuple(dict.fromkeys(parser.sizes))
+            self._sizes[product_id] = (
+                tuple(dict.fromkeys(parser.all_sizes)),
+                tuple(dict.fromkeys(parser.available_sizes)),
+            )
 
         return self._sizes[product_id]
 
@@ -523,10 +605,7 @@ class BoliviaUniversoCollector(CatalogCollector):
 
     def _get_text(self, url: str) -> str:
         request = Request(urljoin(self.base_url, url), headers=self._headers())
-        with self.opener.open(
-            request, timeout=self.timeout_seconds
-        ) as response:
-            return response.read().decode("utf-8", errors="replace")
+        return _request_text(self.opener, request, self.timeout_seconds)
 
     def _post_json(self, path: str, data: dict[str, int | str]) -> JsonObject:
         body = urlencode(data).encode()
@@ -541,10 +620,10 @@ class BoliviaUniversoCollector(CatalogCollector):
             method="POST",
         )
 
-        with self.opener.open(
-            request, timeout=self.timeout_seconds
-        ) as response:
-            return cast(JsonObject, json.load(response))
+        return cast(
+            JsonObject,
+            json.loads(_request_text(self.opener, request, self.timeout_seconds)),
+        )
 
     def _headers(self) -> dict[str, str]:
         return {

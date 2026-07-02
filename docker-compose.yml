@@ -19,6 +19,23 @@ services:
         networks:
             - ropa
 
+
+    ropa-mongo:
+        image: mongo:8.2.7
+        container_name: ropa-mongo
+        ports:
+            - "27017:27017"
+        command: ["mongod", "--wiredTigerCacheSizeGB", "0.4"]
+        volumes:
+            - $PWD/resources/db/mongo/db:/data/db:z
+        deploy:
+            resources:
+                limits:
+                    memory: 512M
+        restart: unless-stopped
+        networks:
+            - ropa
+
     ropa-app:
         image: ropa-app
         container_name: ropa-app

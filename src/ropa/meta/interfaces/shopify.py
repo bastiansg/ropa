@@ -1,18 +1,40 @@
 import json
 
-from decimal import Decimal
+import stamina
+
 from typing import Any, cast
 from itertools import chain, groupby
 
 from html.parser import HTMLParser
 from collections.abc import Iterator
+from urllib.error import HTTPError
 from urllib.parse import urlencode, urljoin
+from urllib.response import addinfourl
 from urllib.request import Request, urlopen
 
+from pydantic import PositiveFloat
+
 from ropa.meta.interfaces.catalog import CatalogCollector, CatalogItem
+from ropa.meta.size_guides import SizeGuideLinkParser
 
 
 JsonObject = dict[str, Any]
+
+
+@stamina.retry(
+    on=HTTPError,
+    attempts=10,
+    timeout=None,
+    wait_initial=30,
+    wait_max=600,
+)
+def _urlopen(request: Request, timeout_seconds: int) -> addinfourl:
+    return urlopen(request, timeout=timeout_seconds)
+
+
+def _request_text(request: Request, timeout_seconds: int) -> str:
+    with _urlopen(request, timeout_seconds) as response:
+        return response.read().decode("utf-8", errors="replace")
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -46,6 +68,7 @@ class ShopifyCollector(CatalogCollector):
         self.vendor = vendor
         self.page_size = page_size
         self.timeout_seconds = timeout_seconds
+        self._size_guide_urls: dict[int, str | None] = {}
 
     def collect_items(self) -> list[CatalogItem]:
         """Collect all public catalog items grouped by category and color."""
@@ -121,11 +144,15 @@ class ShopifyCollector(CatalogCollector):
                 image_urls=self.image_urls(product),
                 color=color,
                 gender=self.gender(product, category),
-                price=self._price(variants),
+                price=price,
                 category=category,
+                all_sizes=self._all_sizes(variants, size_position),
                 available_sizes=self._available_sizes(variants, size_position),
+                size_guide_url=self.size_guide_url(product),
             )
             for color, variants in variant_groups.items()
+            for price in (self._price(variants),)
+            if color is not None
         )
 
     def gender(self, product: JsonObject, category: str) -> str:
@@ -162,6 +189,17 @@ class ShopifyCollector(CatalogCollector):
             )
         )
 
+    def size_guide_url(self, product: JsonObject) -> str | None:
+        """Return the product size-guide URL when the storefront exposes one."""
+        product_id = int(product["id"])
+        if product_id not in self._size_guide_urls:
+            product_url = self.product_url(product)
+            parser = SizeGuideLinkParser(self.base_url, product_url)
+            parser.feed(self._get_text(product_url))
+            self._size_guide_urls[product_id] = parser.url()
+
+        return self._size_guide_urls[product_id]
+
     def _paginate_objects(self, path: str, key: str) -> Iterator[JsonObject]:
         page = 1
 
@@ -183,8 +221,15 @@ class ShopifyCollector(CatalogCollector):
         request_url = f"{url}?{query}" if query else url
         request = Request(request_url, headers={"Accept": "application/json"})
 
-        with urlopen(request, timeout=self.timeout_seconds) as response:
-            return json.load(response)
+        return cast(JsonObject, json.loads(_request_text(request, self.timeout_seconds)))
+
+    def _get_text(self, url: str) -> str:
+        request = Request(
+            urljoin(self.base_url, url),
+            headers={"Accept": "text/html,application/xhtml+xml"},
+        )
+
+        return _request_text(request, self.timeout_seconds)
 
     def _option_position(
         self, product: JsonObject, names: set[str]
@@ -221,6 +266,18 @@ class ShopifyCollector(CatalogCollector):
 
         return colors or {None: tuple()}
 
+    def _all_sizes(
+        self, variants: tuple[JsonObject, ...], size_position: int | None
+    ) -> tuple[str, ...]:
+        sizes = dict.fromkeys(
+            size
+            for variant in variants
+            for size in (self._variant_option(variant, size_position),)
+            if size
+        )
+
+        return tuple(sizes)
+
     def _available_sizes(
         self, variants: tuple[JsonObject, ...], size_position: int | None
     ) -> tuple[str, ...]:
@@ -234,17 +291,18 @@ class ShopifyCollector(CatalogCollector):
 
         return tuple(sizes)
 
-    def _price(self, variants: tuple[JsonObject, ...]) -> Decimal | None:
+    def _price(self, variants: tuple[JsonObject, ...]) -> PositiveFloat:
         prices = (
-            variant.get("price")
+            float(str(price))
             for variant in chain(
                 (variant for variant in variants if variant.get("available")),
                 variants,
             )
-            if variant.get("price")
+            for price in (variant.get("price"),)
+            if price
         )
 
-        return next((Decimal(str(price)) for price in prices), None)
+        return cast(PositiveFloat, next(prices))
 
     def _variant_option(
         self, variant: JsonObject, position: int | None

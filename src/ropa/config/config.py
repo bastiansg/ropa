@@ -7,5 +7,8 @@ class Config(BaseSettings):
     redis_port: StrictInt = 6379
     redis_db: StrictInt = 0
 
+    mongodb_dsn: StrictStr = "mongodb://ropa-mongo:27017"
+    mongodb_db_name: StrictStr = "ropa"
+
 
 config = Config()
