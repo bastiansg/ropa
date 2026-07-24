@@ -1,6 +1,7 @@
 import asyncio
 
 from tqdm import tqdm
+
 from ropa.collectors import (
     AyNotDeadCollector,
     BoliviaUniversoCollector,
@@ -8,9 +9,7 @@ from ropa.collectors import (
     CatalogItem,
     RopaRevolverCollector,
 )
-
 from ropa.db import get_mongo_connector
-
 
 COLLECTION_NAME = "catalog_items"
 

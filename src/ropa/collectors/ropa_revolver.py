@@ -1,16 +1,13 @@
 import json
-
+from collections.abc import Iterator
 from re import findall
 from typing import cast
 from unicodedata import normalize
-from collections.abc import Iterator
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request
 
 from ropa.meta.interfaces import CatalogItem, ShopifyCollector
-
 from ropa.meta.interfaces.shopify import JsonObject, _request_text
-
 
 BASE_HEADERS = {
     "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",

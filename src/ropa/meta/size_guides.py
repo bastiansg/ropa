@@ -2,7 +2,6 @@ from html.parser import HTMLParser
 from unicodedata import normalize
 from urllib.parse import urljoin
 
-
 SIZE_GUIDE_TOKENS = {"guia", "guide", "medidas", "size", "talle", "talles"}
 
 
@@ -17,7 +16,9 @@ def _clean_fragment(value: str) -> str:
 def _guide_tokens(value: str) -> set[str]:
     ascii_text = normalize("NFKD", value).encode("ascii", "ignore").decode()
 
-    return set(ascii_text.casefold().replace("-", " ").replace("_", " ").split())
+    return set(
+        ascii_text.casefold().replace("-", " ").replace("_", " ").split()
+    )
 
 
 def _is_size_guide(value: str) -> bool:

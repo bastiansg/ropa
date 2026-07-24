@@ -1,4 +1,4 @@
-from pydantic import StrictStr, StrictInt
+from pydantic import StrictInt, StrictStr
 from pydantic_settings import BaseSettings
 
 

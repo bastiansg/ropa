@@ -1,10 +1,9 @@
 from pathlib import Path
 
+from llm_agents.meta.interfaces import LLMAgent
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.models.openai import OpenAIChatModelSettings
-
-from llm_agents.meta.interfaces import LLMAgent
 
 from ropa.meta.schema import BodyMeasurements
 

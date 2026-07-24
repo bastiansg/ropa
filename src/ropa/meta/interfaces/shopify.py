@@ -1,22 +1,20 @@
 import json
-
-import stamina
-
-from typing import Any, cast
-from itertools import chain, groupby
-
-from html.parser import HTMLParser
 from collections.abc import Iterator
+from html.parser import HTMLParser
+from itertools import chain, groupby
+from typing import Any, cast
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urljoin
-from urllib.response import addinfourl
 from urllib.request import Request, urlopen
+from urllib.response import addinfourl
 
+import stamina
 from pydantic import PositiveFloat
 
+# from aiocache import Cache, cached
+# from ropa.config import config
 from ropa.meta.interfaces.catalog import CatalogCollector, CatalogItem
 from ropa.meta.size_guides import SizeGuideLinkParser
-
 
 JsonObject = dict[str, Any]
 
@@ -32,6 +30,15 @@ def _urlopen(request: Request, timeout_seconds: int) -> addinfourl:
     return urlopen(request, timeout=timeout_seconds)
 
 
+# @cached(
+#     cache=Cache.REDIS,
+#     endpoint=config.redis_host,
+#     port=config.redis_port,
+#     db=config.redis_db,
+#     serializer=PickleSerializer(),
+#     key_builder=get_cache_key,
+#     noself=True,
+# )
 def _request_text(request: Request, timeout_seconds: int) -> str:
     with _urlopen(request, timeout_seconds) as response:
         return response.read().decode("utf-8", errors="replace")
@@ -221,7 +228,9 @@ class ShopifyCollector(CatalogCollector):
         request_url = f"{url}?{query}" if query else url
         request = Request(request_url, headers={"Accept": "application/json"})
 
-        return cast(JsonObject, json.loads(_request_text(request, self.timeout_seconds)))
+        return cast(
+            JsonObject, json.loads(_request_text(request, self.timeout_seconds))
+        )
 
     def _get_text(self, url: str) -> str:
         request = Request(

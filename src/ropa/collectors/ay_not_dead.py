@@ -1,12 +1,11 @@
+from itertools import islice
 from re import findall
 from typing import Literal
-from itertools import islice
 from unicodedata import normalize
 
 from ropa.config import config  # noqa
 from ropa.meta.interfaces import CatalogItem, ShopifyCollector
 from ropa.meta.interfaces.shopify import JsonObject
-
 
 type Gender = Literal["man", "woman"]
 AY_NOT_DEAD_GENDERS = {

@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
+
 from pydantic import (
     BaseModel,
     ConfigDict,
-    StrictStr,
-    PositiveInt,
     PositiveFloat,
+    PositiveInt,
+    StrictStr,
 )
 
 

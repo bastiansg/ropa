@@ -1,15 +1,11 @@
 import json
-
-import stamina
-
+from collections.abc import Iterable, Iterator
+from html import unescape
+from html.parser import HTMLParser
+from http.cookiejar import CookieJar
 from re import findall
 from typing import Any, cast
 from unicodedata import normalize
-
-from html import unescape
-from http.cookiejar import CookieJar
-from html.parser import HTMLParser
-from collections.abc import Iterable, Iterator
 from urllib.error import HTTPError
 from urllib.parse import (
     parse_qsl,
@@ -19,25 +15,25 @@ from urllib.parse import (
     urlsplit,
     urlunsplit,
 )
-
-from urllib.response import addinfourl
 from urllib.request import (
     HTTPCookieProcessor,
     OpenerDirector,
     Request,
     build_opener,
 )
+from urllib.response import addinfourl
 
+import stamina
 from pydantic import (
     BaseModel,
     ConfigDict,
-    StrictStr,
     PositiveFloat,
     PositiveInt,
+    StrictStr,
 )
+
 from ropa.meta.interfaces import CatalogCollector, CatalogItem
 from ropa.meta.size_guides import SizeGuideLinkParser
-
 
 JsonObject = dict[str, Any]
 BOLIVIA_UNIVERSO_GENDERS = {
@@ -622,7 +618,9 @@ class BoliviaUniversoCollector(CatalogCollector):
 
         return cast(
             JsonObject,
-            json.loads(_request_text(self.opener, request, self.timeout_seconds)),
+            json.loads(
+                _request_text(self.opener, request, self.timeout_seconds)
+            ),
         )
 
     def _headers(self) -> dict[str, str]:

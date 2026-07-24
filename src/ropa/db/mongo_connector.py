@@ -1,8 +1,8 @@
 from functools import lru_cache
 
 from pymongo import AsyncMongoClient
-from pymongo.results import DeleteResult
 from pymongo.asynchronous.cursor import AsyncCursor
+from pymongo.results import DeleteResult
 
 from ropa.config import config
 
