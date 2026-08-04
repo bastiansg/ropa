@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from pydantic import (
     BaseModel,
     ConfigDict,
-    PositiveFloat,
+    NonNegativeFloat,
     PositiveInt,
     StrictStr,
 )
@@ -18,10 +18,10 @@ class CatalogItem(BaseModel):
     url: StrictStr
     description: StrictStr
     image_urls: tuple[StrictStr, ...]
-    color: StrictStr
+    colors: tuple[StrictStr, ...]
     gender: StrictStr
-    price: PositiveFloat
-    category: StrictStr
+    price: NonNegativeFloat
+    categories: tuple[StrictStr, ...]
     all_sizes: tuple[StrictStr, ...]
     available_sizes: tuple[StrictStr, ...]
     size_guide_url: StrictStr | None

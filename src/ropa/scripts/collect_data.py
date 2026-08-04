@@ -1,7 +1,5 @@
 import asyncio
 
-from tqdm import tqdm
-
 from ropa.collectors import (
     AyNotDeadCollector,
     BoliviaUniversoCollector,
@@ -27,17 +25,23 @@ def document(item: CatalogItem) -> dict:
 
 
 def document_filter(doc: dict) -> dict:
-    return {
-        "vendor": doc["vendor"],
-        "product_id": doc["product_id"],
-        "category": doc["category"],
-        "color": doc["color"],
-    }
+    return {"_id": doc["product_id"]}
 
 
 async def store_items(items: list[CatalogItem]) -> int:
     mongo_connector = get_mongo_connector()
     docs = [document(item) for item in items]
+    vendors = tuple(dict.fromkeys(item.vendor for item in items))
+
+    await asyncio.gather(
+        *(
+            mongo_connector.delete_docs(
+                COLLECTION_NAME,
+                {"vendor": vendor},
+            )
+            for vendor in vendors
+        )
+    )
 
     await asyncio.gather(
         *(
@@ -53,22 +57,19 @@ async def store_items(items: list[CatalogItem]) -> int:
     return len(docs)
 
 
-def collect_data() -> None:
+async def collect_data() -> None:
     collector_items = (
         (name, collector.collect_items())
-        for name, collector in tqdm(
-            collectors(),
-            ascii=True,
-        )
+        for name, collector in collectors()
     )
 
     for vendor, items in collector_items:
-        count = asyncio.run(store_items(items=items))
+        count = await store_items(items=items)
         print(f"{vendor}: stored {count} documents")
 
 
 def main() -> None:
-    collect_data()
+    asyncio.run(collect_data())
 
 
 if __name__ == "__main__":

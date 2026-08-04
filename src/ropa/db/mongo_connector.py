@@ -24,9 +24,9 @@ class MongoConnector:
         filter: dict,
         update: dict,
     ) -> None:
-        await self.db[collection].update_one(
+        await self.db[collection].replace_one(
             filter,
-            {"$set": update},
+            update,
             upsert=True,
         )
 

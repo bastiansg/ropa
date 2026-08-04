@@ -1,5 +1,8 @@
 pytest==9.1.1
 stamina==26.1.0
+tqdm==4.70.0
+httpx==0.28.1
+rich==15.0.0
 aiocache[redis]==0.12.3
 
 # Aureka packages

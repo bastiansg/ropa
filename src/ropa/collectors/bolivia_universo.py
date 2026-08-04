@@ -2,28 +2,20 @@ import json
 from collections.abc import Iterable, Iterator
 from html import unescape
 from html.parser import HTMLParser
-from http.cookiejar import CookieJar
 from re import findall
 from typing import Any, cast
 from unicodedata import normalize
-from urllib.error import HTTPError
 from urllib.parse import (
     parse_qsl,
+    quote,
     unquote,
     urlencode,
     urljoin,
     urlsplit,
     urlunsplit,
 )
-from urllib.request import (
-    HTTPCookieProcessor,
-    OpenerDirector,
-    Request,
-    build_opener,
-)
-from urllib.response import addinfourl
+from urllib.request import Request
 
-import stamina
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -32,7 +24,12 @@ from pydantic import (
     StrictStr,
 )
 
-from ropa.meta.interfaces import CatalogCollector, CatalogItem
+from ropa.meta.interfaces import CatalogItem
+from ropa.meta.interfaces.shopify import (
+    RequestTrackingCollector,
+    _page_progress,
+    _request_text,
+)
 from ropa.meta.size_guides import SizeGuideLinkParser
 
 JsonObject = dict[str, Any]
@@ -50,28 +47,9 @@ BOLIVIA_UNIVERSO_GENDERS = {
 }
 
 
-@stamina.retry(
-    on=HTTPError,
-    attempts=10,
-    timeout=None,
-    wait_initial=30,
-    wait_max=600,
-)
-def _open_request(
-    opener: OpenerDirector,
-    request: Request,
-    timeout_seconds: int,
-) -> addinfourl:
-    return opener.open(request, timeout=timeout_seconds)
-
-
-def _request_text(
-    opener: OpenerDirector,
-    request: Request,
-    timeout_seconds: int,
-) -> str:
-    with _open_request(opener, request, timeout_seconds) as response:
-        return response.read().decode("utf-8", errors="replace")
+def _request_url(url: str) -> str:
+    """Return an ASCII-safe URL without double-encoding existing escapes."""
+    return quote(url, safe=":/?&=%+#")
 
 
 class _ListingLink(BaseModel):
@@ -349,7 +327,7 @@ class _ProductDetailParser(HTMLParser):
         if not raw_json:
             return
 
-        data = json.loads(raw_json)
+        data = json.loads(raw_json, strict=False)
         if isinstance(data, dict) and data.get("@type") == "Product":
             self.product_data = data
 
@@ -416,7 +394,7 @@ class _SizeParser(HTMLParser):
         self._label_available = False
 
 
-class BoliviaUniversoCollector(CatalogCollector):
+class BoliviaUniversoCollector(RequestTrackingCollector):
     """Collect public catalog data from Bolivia Universo storefront pages."""
 
     def __init__(
@@ -426,7 +404,11 @@ class BoliviaUniversoCollector(CatalogCollector):
         listing_urls: Iterable[str] | None = None,
         timeout_seconds: int = 30,
         max_pages_per_listing: int | None = None,
+        min_request_interval_seconds: float = 0.5,
     ) -> None:
+        if min_request_interval_seconds < 0:
+            raise ValueError("min_request_interval_seconds cannot be negative")
+
         self.base_url = base_url.rstrip("/")
         self.vendor = vendor
         self.listing_urls = (
@@ -434,9 +416,10 @@ class BoliviaUniversoCollector(CatalogCollector):
         )
         self.timeout_seconds = timeout_seconds
         self.max_pages_per_listing = max_pages_per_listing
-        self.opener = build_opener(HTTPCookieProcessor(CookieJar()))
+        self.min_request_interval_seconds = min_request_interval_seconds
         self._details: dict[str, _ProductDetails] = {}
         self._sizes: dict[int, tuple[tuple[str, ...], tuple[str, ...]]] = {}
+        self._init_request_tracking()
 
     def collect_items(self) -> list[CatalogItem]:
         """Collect all public catalog items."""
@@ -444,43 +427,46 @@ class BoliviaUniversoCollector(CatalogCollector):
 
     def iter_items(self) -> Iterator[CatalogItem]:
         """Yield catalog items from discovered Bolivia Universo listings."""
-        seen_keys: set[tuple[int, str, str]] = set()
+        self._last_progress_page = None
+        products: dict[int, _ProductCard] = {}
+        categories: dict[int, dict[str, None]] = {}
 
         for link in self.iter_listing_links():
             for card in self.iter_listing_cards(link.url):
-                details = self.product_details(card.url)
-                category = self.category_name(link)
-                color = details.color
-                price = details.price
-                if color is None:
-                    continue
+                product_id = card.product_id
+                products[product_id] = card
+                categories.setdefault(product_id, {})[
+                    self.category_name(link)
+                ] = None
 
-                key = (card.product_id, color, category)
-                if key in seen_keys:
-                    continue
+        for product_id, card in products.items():
+            details = self.product_details(card.url)
+            color = details.color
+            if color is None:
+                continue
 
-                seen_keys.add(key)
-                yield CatalogItem(
-                    vendor=self.vendor,
-                    product_id=card.product_id,
-                    title=details.title or card.title,
-                    url=card.url,
-                    description=details.description,
-                    image_urls=details.image_urls or card.image_urls,
-                    color=color,
-                    gender=self.gender(
-                        category,
-                        details.title,
-                        card.title,
-                        card.url,
-                        details.description,
-                    ),
-                    price=price,
-                    category=category,
-                    all_sizes=self.all_sizes(card.product_id),
-                    available_sizes=self.available_sizes(card.product_id),
-                    size_guide_url=details.size_guide_url,
-                )
+            product_categories = tuple(categories[product_id])
+            yield CatalogItem(
+                vendor=self.vendor,
+                product_id=product_id,
+                title=details.title or card.title,
+                url=card.url,
+                description=details.description,
+                image_urls=details.image_urls or card.image_urls,
+                colors=(color,),
+                gender=self.gender(
+                    *product_categories,
+                    details.title,
+                    card.title,
+                    card.url,
+                    details.description,
+                ),
+                price=details.price,
+                categories=product_categories,
+                all_sizes=self.all_sizes(product_id),
+                available_sizes=self.available_sizes(product_id),
+                size_guide_url=details.size_guide_url,
+            )
 
     def gender(self, *values: object) -> str:
         """Infer item gender from Bolivia Universo listing and product text."""
@@ -518,7 +504,8 @@ class BoliviaUniversoCollector(CatalogCollector):
     def iter_listing_cards(self, url: str) -> Iterator[_ProductCard]:
         """Yield product cards from one listing and its AJAX pages."""
         initial_html = self._get_text(url)
-        yield from self._product_cards(initial_html)
+        initial_cards = tuple(self._product_cards(initial_html))
+        yield from self._page_cards(initial_cards, 1)
 
         page_count = 0
         while self.max_pages_per_listing is None or (
@@ -530,7 +517,7 @@ class BoliviaUniversoCollector(CatalogCollector):
             if not cards:
                 return
 
-            yield from cards
+            yield from self._page_cards(cards, page_count + 1)
             if not data.get("1"):
                 return
 
@@ -599,14 +586,36 @@ class BoliviaUniversoCollector(CatalogCollector):
 
         yield from parser.cards
 
+    def _page_cards(
+        self,
+        cards: tuple[_ProductCard, ...],
+        page: int,
+    ) -> Iterator[_ProductCard]:
+        print_header = page != self._last_progress_page
+        self._last_progress_page = page
+        yield from _page_progress(
+            cards,
+            self.vendor,
+            page,
+            print_header,
+        )
+
     def _get_text(self, url: str) -> str:
-        request = Request(urljoin(self.base_url, url), headers=self._headers())
-        return _request_text(self.opener, request, self.timeout_seconds)
+        request = Request(
+            _request_url(urljoin(self.base_url, url)),
+            headers=self._headers(),
+        )
+
+        return _request_text(
+            request,
+            self.timeout_seconds,
+            request_started=self._wait_for_request_slot,
+        )
 
     def _post_json(self, path: str, data: dict[str, int | str]) -> JsonObject:
         body = urlencode(data).encode()
         request = Request(
-            urljoin(f"{self.base_url}/", path.lstrip("/")),
+            _request_url(urljoin(f"{self.base_url}/", path.lstrip("/"))),
             data=body,
             headers={
                 **self._headers(),
@@ -619,7 +628,11 @@ class BoliviaUniversoCollector(CatalogCollector):
         return cast(
             JsonObject,
             json.loads(
-                _request_text(self.opener, request, self.timeout_seconds)
+                _request_text(
+                    request,
+                    self.timeout_seconds,
+                    request_started=self._wait_for_request_slot,
+                )
             ),
         )
 

@@ -1,8 +1,11 @@
 from collections.abc import Iterable
 from itertools import islice
+from threading import Lock
+from time import sleep
 
-from rich.table import Table
+import pytest
 from rich.console import Console
+from rich.table import Table
 
 from ropa.collectors import (
     AyNotDeadCollector,
@@ -10,13 +13,96 @@ from ropa.collectors import (
     CatalogItem,
     RopaRevolverCollector,
 )
-
-from ropa.collectors.bolivia_universo import _ProductDetailParser, _SizeParser
+from ropa.collectors.bolivia_universo import (
+    _ProductDetailParser,
+    _SizeParser,
+)
+from ropa.collectors.bolivia_universo import (
+    _request_url as bolivia_request_url,
+)
+from ropa.meta.interfaces.shopify import ShopifyCollector, _request_url
 from ropa.meta.size_guides import SizeGuideLinkParser
-
 
 PRINT_LIMIT = 5
 MINIMUM_COLLECTED_ITEMS = 10
+
+
+def shopify_product(product_id: int) -> dict:
+    return {
+        "id": product_id,
+        "title": f"Product {product_id}",
+        "handle": f"product-{product_id}",
+        "body_html": "",
+        "options": ({"name": "Color", "position": 1},),
+        "variants": (
+            {
+                "available": True,
+                "option1": "Black",
+                "price": "100.00",
+            },
+        ),
+    }
+
+
+class ConcurrentShopifyCollector(ShopifyCollector):
+    def __init__(self, max_concurrent_requests: int) -> None:
+        super().__init__(
+            "https://example.myshopify.com",
+            "Example",
+            max_concurrent_requests=max_concurrent_requests,
+        )
+        self.active_requests = 0
+        self.high_water_mark = 0
+        self.lock = Lock()
+
+    def _iter_product_categories(self):
+        return (
+            (shopify_product(product_id), "Test") for product_id in range(1, 7)
+        )
+
+    def _get_text(self, url: str) -> str:
+        with self.lock:
+            self.active_requests += 1
+            self.high_water_mark = max(
+                self.high_water_mark,
+                self.active_requests,
+            )
+
+        sleep(0.01)
+
+        with self.lock:
+            self.active_requests -= 1
+
+        return ""
+
+
+def test_shopify_collector_limits_concurrent_requests() -> None:
+    collector = ConcurrentShopifyCollector(max_concurrent_requests=2)
+
+    items = collector.collect_items()
+
+    assert len(items) == 6
+    assert collector.high_water_mark == 2
+
+
+def test_shopify_collector_rejects_invalid_concurrency() -> None:
+    with pytest.raises(
+        ValueError,
+        match="max_concurrent_requests must be greater than zero",
+    ):
+        ConcurrentShopifyCollector(max_concurrent_requests=0)
+
+
+def test_shopify_request_url_encodes_non_ascii_paths() -> None:
+    url = _request_url("https://example.com/collections/corazón/products.json")
+
+    assert url == ("https://example.com/collections/coraz%C3%B3n/products.json")
+
+
+def test_bolivia_request_url_encodes_non_ascii_paths() -> None:
+    url = bolivia_request_url("https://example.com/categorías/corazón")
+
+    assert url == "https://example.com/categor%C3%ADas/coraz%C3%B3n"
 
 
 def item_row(item: CatalogItem) -> tuple[str, ...]:
@@ -94,18 +180,26 @@ def test_ay_not_dead_collector_collects_gender_and_price() -> None:
                 "option2": "M",
                 "price": "120.50",
             },
+            {
+                "available": True,
+                "option1": "Blanco",
+                "option2": "S",
+                "price": "110.00",
+            },
         ),
     }
 
     collector = AyNotDeadCollector()
     collector._size_guide_urls[1] = "https://aynotdead.com/pages/guia-de-talles"
 
-    item = next(collector.product_to_items(product, "Hombres"))
+    item = collector.product_to_item(product, ("Hombres",))
 
     assert item.gender == "man"
-    assert item.price == 120.50
+    assert item.categories == ("Hombres",)
+    assert item.colors == ("Blanco", "Negro")
+    assert item.price == 110.00
     assert item.all_sizes == ("S", "M")
-    assert item.available_sizes == ("M",)
+    assert item.available_sizes == ("S", "M")
     assert item.size_guide_url == "https://aynotdead.com/pages/guia-de-talles"
 
 
@@ -143,6 +237,26 @@ def test_bolivia_universo_collector_collects_gender_and_price() -> None:
     )
 
 
+def test_bolivia_universo_product_parser_accepts_json_control_characters() -> (
+    None
+):
+    parser = _ProductDetailParser("https://boliviauniverso.com")
+    parser.feed(
+        """
+        <script type="application/ld+json">
+        {
+            "@type": "Product",
+            "name": "Vestido",
+            "description": "Primera línea\u000bSegunda línea",
+            "offers": {"price": "12345.67"}
+        }
+        </script>
+        """
+    )
+
+    assert parser.details().description == "Primera línea\u000bSegunda línea"
+
+
 def test_ropa_revolver_collector_collects_gender_and_price() -> None:
     product = {
         "id": 1,
@@ -175,11 +289,13 @@ def test_ropa_revolver_collector_collects_gender_and_price() -> None:
         "https://roparevolver.com/cdn/shop/files/parka.jpg"
     )
 
-    item = next(
-        collector.product_to_items(product, collector.category(product))
+    item = collector.product_to_item(
+        product,
+        (collector.category(product),),
     )
 
     assert item.gender == "woman"
+    assert item.colors == ("Azul",)
     assert item.price == 220.00
     assert item.all_sizes == ("S", "M")
     assert item.available_sizes == ("S",)

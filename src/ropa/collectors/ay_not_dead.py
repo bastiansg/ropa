@@ -29,22 +29,26 @@ class AyNotDeadCollector(ShopifyCollector):
         self,
         page_size: int = 250,
         timeout_seconds: int = 30,
+        max_concurrent_requests: int = 8,
+        min_request_interval_seconds: float = 0.5,
     ) -> None:
         super().__init__(
             base_url="https://aynotdead.com",
             vendor="Ay Not Dead",
             page_size=page_size,
             timeout_seconds=timeout_seconds,
+            max_concurrent_requests=max_concurrent_requests,
+            min_request_interval_seconds=min_request_interval_seconds,
         )
 
     def collect_items(self, limit: int | None = None) -> list[CatalogItem]:
         """Collect catalog items."""
         return list(islice(self.iter_items(), limit))
 
-    def gender(self, product: JsonObject, category: str) -> str:
+    def gender(self, product: JsonObject, categories: tuple[str, ...]) -> str:
         """Infer item gender from Ay Not Dead product and collection text."""
         tokens = self._gender_tokens(
-            category,
+            *categories,
             product.get("title"),
             product.get("handle"),
             " ".join(str(tag) for tag in product.get("tags") or ()),
