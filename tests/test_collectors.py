@@ -196,7 +196,7 @@ def test_ay_not_dead_collector_collects_gender_and_price() -> None:
 
     assert item.gender == "man"
     assert item.categories == ("Hombres",)
-    assert item.colors == ("Blanco", "Negro")
+    assert item.colors == ("blanco", "negro")
     assert item.price == 110.00
     assert item.all_sizes == ("S", "M")
     assert item.available_sizes == ("S", "M")
@@ -295,7 +295,7 @@ def test_ropa_revolver_collector_collects_gender_and_price() -> None:
     )
 
     assert item.gender == "woman"
-    assert item.colors == ("Azul",)
+    assert item.colors == ("azul",)
     assert item.price == 220.00
     assert item.all_sizes == ("S", "M")
     assert item.available_sizes == ("S",)
@@ -318,6 +318,18 @@ def test_bolivia_universo_size_parser_collects_all_and_available_sizes() -> (
 
     assert tuple(parser.all_sizes) == ("SM", "ME", "LA")
     assert tuple(parser.available_sizes) == ("SM", "LA")
+
+
+@pytest.mark.parametrize(
+    "collector",
+    (
+        AyNotDeadCollector(),
+        BoliviaUniversoCollector(),
+        RopaRevolverCollector(),
+    ),
+)
+def test_collectors_normalize_colors(collector) -> None:
+    assert collector.normalize_color("  Gris-Negro!  ") == "gris negro"
 
 
 def test_size_guide_parser_prefers_direct_guide_assets() -> None:

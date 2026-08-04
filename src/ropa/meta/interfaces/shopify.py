@@ -377,7 +377,11 @@ class ShopifyCollector(RequestTrackingCollector):
             description=self.description(product),
             image_urls=self.image_urls(product),
             colors=tuple(
-                color for color in variant_groups if color is not None
+                dict.fromkeys(
+                    self.normalize_color(color)
+                    for color in variant_groups
+                    if color is not None
+                )
             ),
             gender=self.gender(product, categories),
             price=self._price(variants),

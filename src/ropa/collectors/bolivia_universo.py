@@ -453,7 +453,7 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
                 url=card.url,
                 description=details.description,
                 image_urls=details.image_urls or card.image_urls,
-                colors=(color,),
+                colors=(self.normalize_color(color),),
                 gender=self.gender(
                     *product_categories,
                     details.title,

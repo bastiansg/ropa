@@ -16,6 +16,7 @@ classifiers = [
 
 [project.scripts]
 collect_data = "ropa.scripts.collect_data:main"
+catalog_stats = "ropa.scripts.catalog_stats:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
