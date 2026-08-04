@@ -6,4 +6,3 @@ RUN --mount=type=bind,source=.git,target=/src/.git \
     uv pip install /src --no-deps
 
 WORKDIR /src
-CMD ["python", "-m", "ropa.scripts.test_ay_not_dead_collector"]

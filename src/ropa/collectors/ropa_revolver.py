@@ -34,7 +34,6 @@ class RopaRevolverCollector(ShopifyCollector):
         page_size: int = 250,
         timeout_seconds: int = 30,
         max_concurrent_requests: int = 8,
-        min_request_interval_seconds: float = 0.5,
     ) -> None:
         super().__init__(
             base_url="https://roparevolver.com",
@@ -42,7 +41,6 @@ class RopaRevolverCollector(ShopifyCollector):
             page_size=page_size,
             timeout_seconds=timeout_seconds,
             max_concurrent_requests=max_concurrent_requests,
-            min_request_interval_seconds=min_request_interval_seconds,
         )
 
     def _iter_product_categories(self) -> Iterator[tuple[JsonObject, str]]:
@@ -91,7 +89,6 @@ class RopaRevolverCollector(ShopifyCollector):
                 _request_text(
                     request,
                     self.timeout_seconds,
-                    request_started=self._wait_for_request_slot,
                 )
             ),
         )
@@ -105,5 +102,4 @@ class RopaRevolverCollector(ShopifyCollector):
         return _request_text(
             request,
             self.timeout_seconds,
-            request_started=self._wait_for_request_slot,
         )

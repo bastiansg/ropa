@@ -30,7 +30,6 @@ class AyNotDeadCollector(ShopifyCollector):
         page_size: int = 250,
         timeout_seconds: int = 30,
         max_concurrent_requests: int = 8,
-        min_request_interval_seconds: float = 0.5,
     ) -> None:
         super().__init__(
             base_url="https://aynotdead.com",
@@ -38,7 +37,6 @@ class AyNotDeadCollector(ShopifyCollector):
             page_size=page_size,
             timeout_seconds=timeout_seconds,
             max_concurrent_requests=max_concurrent_requests,
-            min_request_interval_seconds=min_request_interval_seconds,
         )
 
     def collect_items(self, limit: int | None = None) -> list[CatalogItem]:

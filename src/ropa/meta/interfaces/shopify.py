@@ -6,8 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 from html.parser import HTMLParser
 from itertools import batched, chain, groupby
-from threading import Lock, Thread
-from time import monotonic, sleep
+from threading import Thread
 from typing import Any, cast
 from urllib.parse import quote, urlencode, urljoin
 from urllib.request import Request
@@ -28,7 +27,6 @@ from ropa.meta.interfaces.catalog import (
 from ropa.meta.size_guides import SizeGuideLinkParser
 
 JsonObject = dict[str, Any]
-REQUEST_CACHE_TTL_SECONDS = 3600
 logger = logging.getLogger(__name__)
 console = Console(stderr=True)
 
@@ -112,7 +110,7 @@ _CACHE_EVENT_LOOP = _CacheEventLoop()
     db=config.redis_db,
     pool_max_size=32,
     namespace="shopify:http",
-    ttl=REQUEST_CACHE_TTL_SECONDS,
+    ttl=None,
     lease=120,
     key_builder=_request_cache_key,
 )
@@ -126,12 +124,8 @@ _CACHE_EVENT_LOOP = _CacheEventLoop()
 async def _request_text_cached(
     request: Request,
     timeout_seconds: int,
-    request_started: Callable[[], None] | None = None,
     request_completed: Callable[[], None] | None = None,
 ) -> str:
-    if request_started is not None:
-        request_started()
-
     try:
         try:
             response = await asyncio.to_thread(
@@ -184,14 +178,12 @@ async def _request_text_cached(
 def _request_text(
     request: Request,
     timeout_seconds: int,
-    request_started: Callable[[], None] | None = None,
     request_completed: Callable[[], None] | None = None,
 ) -> str:
     return _CACHE_EVENT_LOOP.run(
         _request_text_cached(
             request,
             timeout_seconds,
-            request_started,
             request_completed,
         )
     )
@@ -212,26 +204,12 @@ class _HTMLTextExtractor(HTMLParser):
 
 
 class RequestTrackingCollector(CatalogCollector):
-    """Catalog collector with paced Rich request progress reporting."""
+    """Catalog collector with Rich request progress reporting."""
 
     vendor: str
-    min_request_interval_seconds: float
 
     def _init_request_tracking(self) -> None:
-        self._request_lock = Lock()
-        self._next_request_at = 0.0
         self._last_progress_page: int | None = None
-
-    def _wait_for_request_slot(self) -> None:
-        """Pace request starts across all worker threads."""
-        with self._request_lock:
-            delay = max(self._next_request_at - monotonic(), 0)
-            if delay:
-                sleep(delay)
-
-            self._next_request_at = (
-                monotonic() + self.min_request_interval_seconds
-            )
 
 class ShopifyCollector(RequestTrackingCollector):
     """Collect public catalog data from Shopify storefront JSON endpoints."""
@@ -246,7 +224,6 @@ class ShopifyCollector(RequestTrackingCollector):
         page_size: int = 250,
         timeout_seconds: int = 30,
         max_concurrent_requests: int = 8,
-        min_request_interval_seconds: float = 0.5,
     ) -> None:
         if not 1 <= page_size <= 250:
             raise ValueError("page_size must be between 1 and 250")
@@ -257,15 +234,11 @@ class ShopifyCollector(RequestTrackingCollector):
         if max_concurrent_requests <= 0:
             raise ValueError("max_concurrent_requests must be greater than zero")
 
-        if min_request_interval_seconds < 0:
-            raise ValueError("min_request_interval_seconds cannot be negative")
-
         self.base_url = base_url.rstrip("/")
         self.vendor = vendor
         self.page_size = page_size
         self.timeout_seconds = timeout_seconds
         self.max_concurrent_requests = max_concurrent_requests
-        self.min_request_interval_seconds = min_request_interval_seconds
         self._size_guide_urls: dict[int, str | None] = {}
         self._init_request_tracking()
 
@@ -377,15 +350,11 @@ class ShopifyCollector(RequestTrackingCollector):
             description=self.description(product),
             image_urls=self.image_urls(product),
             colors=tuple(
-                dict.fromkeys(
-                    self.normalize_color(color)
-                    for color in variant_groups
-                    if color is not None
-                )
+                color for color in variant_groups if color is not None
             ),
             gender=self.gender(product, categories),
             price=self._price(variants),
-            categories=categories,
+            categories=tuple(category.lower() for category in categories),
             all_sizes=self._all_sizes(variants, size_position),
             available_sizes=self._available_sizes(variants, size_position),
             size_guide_url=self.size_guide_url(product),
@@ -491,7 +460,6 @@ class ShopifyCollector(RequestTrackingCollector):
                 _request_text(
                     request,
                     self.timeout_seconds,
-                    request_started=self._wait_for_request_slot,
                 )
             ),
         )
@@ -505,7 +473,6 @@ class ShopifyCollector(RequestTrackingCollector):
         return _request_text(
             request,
             self.timeout_seconds,
-            request_started=self._wait_for_request_slot,
         )
 
     def _option_position(

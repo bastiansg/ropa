@@ -404,11 +404,7 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
         listing_urls: Iterable[str] | None = None,
         timeout_seconds: int = 30,
         max_pages_per_listing: int | None = None,
-        min_request_interval_seconds: float = 0.5,
     ) -> None:
-        if min_request_interval_seconds < 0:
-            raise ValueError("min_request_interval_seconds cannot be negative")
-
         self.base_url = base_url.rstrip("/")
         self.vendor = vendor
         self.listing_urls = (
@@ -416,7 +412,6 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
         )
         self.timeout_seconds = timeout_seconds
         self.max_pages_per_listing = max_pages_per_listing
-        self.min_request_interval_seconds = min_request_interval_seconds
         self._details: dict[str, _ProductDetails] = {}
         self._sizes: dict[int, tuple[tuple[str, ...], tuple[str, ...]]] = {}
         self._init_request_tracking()
@@ -435,9 +430,9 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
             for card in self.iter_listing_cards(link.url):
                 product_id = card.product_id
                 products[product_id] = card
-                categories.setdefault(product_id, {})[
-                    self.category_name(link)
-                ] = None
+                categories.setdefault(product_id, {}).update(
+                    (category, None) for category in self.category_names(link)
+                )
 
         for product_id, card in products.items():
             details = self.product_details(card.url)
@@ -453,7 +448,7 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
                 url=card.url,
                 description=details.description,
                 image_urls=details.image_urls or card.image_urls,
-                colors=(self.normalize_color(color),),
+                colors=(color,),
                 gender=self.gender(
                     *product_categories,
                     details.title,
@@ -560,19 +555,20 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
 
         return self._sizes[product_id]
 
-    def category_name(self, link: _ListingLink) -> str:
-        """Build a stable category name from a listing link."""
+    def category_names(self, link: _ListingLink) -> tuple[str, ...]:
+        """Build normalized category names from a listing link."""
         path = urlsplit(link.url).path.strip("/")
         if path == "lo-nuevo":
-            return link.title or "Lo Nuevo"
+            return ((link.title or "Lo Nuevo").lower(),)
 
         if path.startswith("categorias/"):
             category = path.removeprefix("categorias/")
-            return " / ".join(
-                _clean_text(unquote(part)) for part in category.split("/")
+            return tuple(
+                _clean_text(unquote(part)).lower()
+                for part in category.split("/")
             )
 
-        return link.title or path or "Uncategorized"
+        return ((link.title or path or "Uncategorized").lower(),)
 
     def _gender_tokens(self, values: tuple[object, ...]) -> set[str]:
         text = " ".join(str(value or "") for value in values)
@@ -609,7 +605,6 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
         return _request_text(
             request,
             self.timeout_seconds,
-            request_started=self._wait_for_request_slot,
         )
 
     def _post_json(self, path: str, data: dict[str, int | str]) -> JsonObject:
@@ -631,7 +626,6 @@ class BoliviaUniversoCollector(RequestTrackingCollector):
                 _request_text(
                     request,
                     self.timeout_seconds,
-                    request_started=self._wait_for_request_slot,
                 )
             ),
         )

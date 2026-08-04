@@ -1,4 +1,4 @@
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build test test-ay-not-dead collect-data catalog-stats
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data catalog-stats
 
 
 core-build:
@@ -48,9 +48,6 @@ app-stop:
 
 app-restart: app-stop app-up
 
-
-test: app-build
-	docker compose run --rm ropa-app pytest -s tests
 
 collect-data: app-build mongo-start
 	docker compose run --rm ropa-app collect_data
