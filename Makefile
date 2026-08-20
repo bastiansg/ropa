@@ -1,4 +1,4 @@
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo catalog-stats
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver catalog-stats
 
 
 core-build:
@@ -57,6 +57,9 @@ collect-ay-not-dead: app-build mongo-start
 
 collect-bolivia-universo: app-build mongo-start
 	docker compose run --rm ropa-app collect_bolivia_universo
+
+collect-ropa-revolver: app-build mongo-start
+	docker compose run --rm ropa-app collect_ropa_revolver
 
 catalog-stats: app-build mongo-start
 	docker compose run --rm ropa-app catalog_stats

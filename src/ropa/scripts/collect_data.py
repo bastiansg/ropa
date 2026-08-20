@@ -5,6 +5,7 @@ from ropa.collectors import (
     BoliviaUniversoCollector,
     CatalogCollector,
     CatalogItem,
+    RopaRevolverCollector,
 )
 from ropa.db import get_mongo_connector
 
@@ -15,6 +16,7 @@ def collectors() -> list[tuple[str, CatalogCollector]]:
     return [
         ("Ay Not Dead", AyNotDeadCollector()),
         ("Bolivia - Divina", BoliviaUniversoCollector()),
+        ("Ropa Revolver", RopaRevolverCollector()),
     ]
 
 
