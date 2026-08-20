@@ -2,10 +2,8 @@ import asyncio
 
 from ropa.collectors import (
     AyNotDeadCollector,
-    BoliviaUniversoCollector,
     CatalogCollector,
     CatalogItem,
-    RopaRevolverCollector,
 )
 from ropa.db import get_mongo_connector
 
@@ -15,8 +13,6 @@ COLLECTION_NAME = "catalog_items"
 def collectors() -> list[tuple[str, CatalogCollector]]:
     return [
         ("Ay Not Dead", AyNotDeadCollector()),
-        ("Bolivia Universo", BoliviaUniversoCollector()),
-        ("Ropa Revolver", RopaRevolverCollector()),
     ]
 
 
@@ -58,12 +54,8 @@ async def store_items(items: list[CatalogItem]) -> int:
 
 
 async def collect_data() -> None:
-    collector_items = (
-        (name, collector.collect_items())
-        for name, collector in collectors()
-    )
-
-    for vendor, items in collector_items:
+    for vendor, collector in collectors():
+        items = await asyncio.to_thread(collector.collect_items)
         count = await store_items(items=items)
         print(f"{vendor}: stored {count} documents")
 
