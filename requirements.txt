@@ -1,4 +1,5 @@
 stamina==26.1.0
+aiolimiter==1.2.1
 tqdm==4.70.0
 httpx==0.28.1
 rich==15.0.0

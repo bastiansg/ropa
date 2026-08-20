@@ -9,9 +9,11 @@ from xml.etree import ElementTree
 
 import stamina
 from aiocache import Cache, cached_stampede
+from aiolimiter import AsyncLimiter
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.errors import RequestsError
 from rich.console import Console
+from rich.live import Live
 from rich.text import Text
 from tqdm import tqdm
 
@@ -103,9 +105,19 @@ def _render_detail(label: str, value: object) -> None:
     console.print(detail)
 
 
+def _catalog_progress(page: int, products: int) -> Text:
+    return Text.assemble(
+        (" :: CATALOG PAGE ", "dim magenta"),
+        (f"{page:02}", "bold white"),
+        (" // PRODUCTS ", "dim magenta"),
+        (str(products), "dim white"),
+    )
+
+
 def _request_cache_key(
     _function: object,
     _session: AsyncSession,
+    _limiter: AsyncLimiter,
     url: str,
     accept: str,
     _timeout_seconds: int,
@@ -133,16 +145,18 @@ def _request_cache_key(
 )
 async def _request_text_cached(
     session: AsyncSession,
+    limiter: AsyncLimiter,
     url: str,
     accept: str,
     timeout_seconds: int,
 ) -> str:
-    return await _request_text_uncached(
-        session,
-        url,
-        accept,
-        timeout_seconds,
-    )
+    async with limiter:
+        return await _request_text_uncached(
+            session,
+            url,
+            accept,
+            timeout_seconds,
+        )
 
 
 async def _request_text_uncached(
@@ -200,6 +214,7 @@ class AyNotDeadCollector(CatalogCollector):
 
     async def _collect_items(self) -> list[CatalogItem]:
         _render_status("AY NOT DEAD // CATALOG", "OPENING PRODUCT FEED...")
+        limiter = AsyncLimiter(1, 1)
 
         async with AsyncSession(
             max_clients=self.max_concurrent_requests,
@@ -207,11 +222,12 @@ class AyNotDeadCollector(CatalogCollector):
         ) as session:
             products = {
                 str(product["handle"]): product
-                async for product in self.iter_products(session)
+                async for product in self.iter_products(session, limiter)
             }
-            await self._add_sitemap_products(session, products)
+            await self._add_sitemap_products(session, limiter, products)
             size_guide_urls = await self._size_guide_urls(
                 session,
+                limiter,
                 products.values(),
             )
 
@@ -227,39 +243,54 @@ class AyNotDeadCollector(CatalogCollector):
     async def iter_products(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
     ) -> AsyncIterator[JsonObject]:
         """Yield every product until Shopify returns an empty page."""
         page = 1
+        product_count = 0
 
-        while True:
-            _render_status(f"PAGE {page:02}", "REQUESTING PRODUCTS...")
-            response_text = await _request_text_cached(
-                session,
-                (
-                    f"{BASE_URL}/products.json"
-                    f"?limit={self.page_size}&page={page}"
-                ),
-                "application/json",
-                self.timeout_seconds,
-            )
-            products = tuple(json.loads(response_text).get("products") or ())
-            _render_detail("PRODUCTS RECEIVED", len(products))
+        with Live(
+            _catalog_progress(0, 0),
+            console=console,
+            refresh_per_second=10,
+        ) as progress:
+            while True:
+                response_text = await _request_text_cached(
+                    session,
+                    limiter,
+                    (
+                        f"{BASE_URL}/products.json"
+                        f"?limit={self.page_size}&page={page}"
+                    ),
+                    "application/json",
+                    self.timeout_seconds,
+                )
+                products = tuple(
+                    json.loads(response_text).get("products") or ()
+                )
 
-            if not products:
-                return
+                if not products:
+                    return
 
-            for product in products:
-                yield product
+                product_count += len(products)
+                progress.update(_catalog_progress(page, product_count))
 
-            page += 1
+                for product in products:
+                    yield product
+
+                page += 1
 
     async def _add_sitemap_products(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
         products: dict[str, JsonObject],
     ) -> None:
         _render_status("SITEMAP CHECK", "VERIFYING CATALOG COVERAGE...")
-        sitemap_urls = await self._product_urls_from_sitemap(session)
+        sitemap_urls = await self._product_urls_from_sitemap(
+            session,
+            limiter,
+        )
         missing_urls = tuple(
             url for url in sitemap_urls if self._handle(url) not in products
         )
@@ -272,6 +303,7 @@ class AyNotDeadCollector(CatalogCollector):
 
         missing_products = await self._fallback_products(
             session,
+            limiter,
             missing_urls,
         )
 
@@ -282,10 +314,12 @@ class AyNotDeadCollector(CatalogCollector):
     async def _product_urls_from_sitemap(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
     ) -> tuple[str, ...]:
         sitemap_index = ElementTree.fromstring(
             await _request_text_cached(
                 session,
+                limiter,
                 f"{BASE_URL}/sitemap.xml",
                 "application/xml",
                 self.timeout_seconds,
@@ -302,6 +336,7 @@ class AyNotDeadCollector(CatalogCollector):
             *(
                 _request_text_cached(
                     session,
+                    limiter,
                     sitemap_url,
                     "application/xml",
                     self.timeout_seconds,
@@ -323,6 +358,7 @@ class AyNotDeadCollector(CatalogCollector):
     async def _fallback_products(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
         product_urls: Iterable[str],
     ) -> tuple[JsonObject, ...]:
         semaphore = asyncio.Semaphore(self.max_concurrent_requests)
@@ -332,6 +368,7 @@ class AyNotDeadCollector(CatalogCollector):
                 *(
                     self._fallback_product(
                         session,
+                        limiter,
                         semaphore,
                         product_url,
                     )
@@ -343,6 +380,7 @@ class AyNotDeadCollector(CatalogCollector):
     async def _fallback_product(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
         semaphore: asyncio.Semaphore,
         product_url: str,
     ) -> JsonObject:
@@ -350,6 +388,7 @@ class AyNotDeadCollector(CatalogCollector):
             product = json.loads(
                 await _request_text_cached(
                     session,
+                    limiter,
                     f"{product_url}.js",
                     "application/json",
                     self.timeout_seconds,
@@ -379,6 +418,7 @@ class AyNotDeadCollector(CatalogCollector):
     async def _size_guide_urls(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
         products: Iterable[JsonObject],
     ) -> dict[int, str | None]:
         products = tuple(products)
@@ -391,7 +431,7 @@ class AyNotDeadCollector(CatalogCollector):
 
         tasks = tuple(
             asyncio.create_task(
-                self._size_guide_url(session, semaphore, product)
+                self._size_guide_url(session, limiter, semaphore, product)
             )
             for product in products
         )
@@ -423,6 +463,7 @@ class AyNotDeadCollector(CatalogCollector):
     async def _size_guide_url(
         self,
         session: AsyncSession,
+        limiter: AsyncLimiter,
         semaphore: asyncio.Semaphore,
         product: JsonObject,
     ) -> tuple[int, str | None]:
@@ -433,6 +474,7 @@ class AyNotDeadCollector(CatalogCollector):
             async with semaphore:
                 html = await _request_text_cached(
                     session,
+                    limiter,
                     product_url,
                     "text/html,application/xhtml+xml",
                     self.timeout_seconds,
@@ -441,7 +483,12 @@ class AyNotDeadCollector(CatalogCollector):
             _HTTPRequestError,
             _TransportError,
             _TransientHTTPStatusError,
-        ):
+        ) as error:
+            _render_detail(
+                "SIZE GUIDE ERROR",
+                f"{product_url} // {error}",
+            )
+
             return product_id, None
 
         parser = SizeGuideLinkParser(BASE_URL, product_url)

@@ -2,6 +2,7 @@ import asyncio
 
 from ropa.collectors import (
     AyNotDeadCollector,
+    BoliviaUniversoCollector,
     CatalogCollector,
     CatalogItem,
 )
@@ -13,6 +14,7 @@ COLLECTION_NAME = "catalog_items"
 def collectors() -> list[tuple[str, CatalogCollector]]:
     return [
         ("Ay Not Dead", AyNotDeadCollector()),
+        ("Bolivia - Divina", BoliviaUniversoCollector()),
     ]
 
 
@@ -55,9 +57,16 @@ async def store_items(items: list[CatalogItem]) -> int:
 
 async def collect_data() -> None:
     for vendor, collector in collectors():
-        items = await asyncio.to_thread(collector.collect_items)
-        count = await store_items(items=items)
-        print(f"{vendor}: stored {count} documents")
+        await collect_provider(vendor, collector)
+
+
+async def collect_provider(
+    vendor: str,
+    collector: CatalogCollector,
+) -> None:
+    items = await asyncio.to_thread(collector.collect_items)
+    count = await store_items(items=items)
+    print(f"{vendor}: stored {count} documents")
 
 
 def main() -> None:

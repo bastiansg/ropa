@@ -4,3 +4,4 @@ from ropa.meta.interfaces import (  # noqa
 )
 
 from .ay_not_dead import AyNotDeadCollector  # noqa
+from .bolivia_universo import BoliviaUniversoCollector  # noqa
