@@ -1,4 +1,4 @@
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver catalog-stats
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats
 
 
 core-build:
@@ -60,6 +60,9 @@ collect-bolivia-universo: app-build mongo-start
 
 collect-ropa-revolver: app-build mongo-start
 	docker compose run --rm ropa-app collect_ropa_revolver
+
+extract-size-guides: app-build mongo-start redis-start
+	docker compose run --rm ropa-app python -m ropa.scripts.extract_size_guides
 
 catalog-stats: app-build mongo-start
 	docker compose run --rm ropa-app catalog_stats

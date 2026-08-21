@@ -131,7 +131,7 @@ class SizeGuideLinkParser(HTMLParser):
 
         haystack = " ".join(
             attrs.get(name, "")
-            for name in ("alt", "class", "id", "src", "title")
+            for name in ("alt", "id", "src", "title")
         )
         if self._modal_depth is None and not _is_size_guide(haystack):
             return

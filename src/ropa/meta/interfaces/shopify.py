@@ -532,10 +532,34 @@ class ShopifyCollector(CatalogCollector):
 
             return product_id, None
 
-        parser = SizeGuideLinkParser(self.base_url, product_url)
-        parser.feed(html)
+        try:
+            parser = SizeGuideLinkParser(self.base_url, product_url)
+            parser.feed(html)
+            size_guide_url = await self._resolve_size_guide_url(
+                session,
+                limiter,
+                semaphore,
+                parser.url(),
+            )
+        except (
+            _HTTPRequestError,
+            _TransportError,
+            _TransientHTTPStatusError,
+        ) as error:
+            _render_detail("SIZE GUIDE ERROR", f"{product_url} // {error}")
 
-        return product_id, parser.url()
+            return product_id, None
+
+        return product_id, size_guide_url
+
+    async def _resolve_size_guide_url(
+        self,
+        session: AsyncSession,
+        limiter: AsyncLimiter,
+        semaphore: asyncio.Semaphore,
+        size_guide_url: str | None,
+    ) -> str | None:
+        return size_guide_url
 
     async def _request_text(
         self,
