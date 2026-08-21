@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 from unicodedata import category, normalize
 
 from pydantic import (
@@ -27,6 +28,7 @@ class CatalogItem(BaseModel):
     all_sizes: tuple[StrictStr, ...]
     available_sizes: tuple[StrictStr, ...]
     size_guide_url: StrictStr | None
+    size_guide: dict[str, Any] | None = None
 
     @field_validator("title")
     @classmethod

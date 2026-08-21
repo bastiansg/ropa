@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Iterable
 from hashlib import sha256
 from html import unescape
 from html.parser import HTMLParser
+from unicodedata import normalize
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import stamina
@@ -165,6 +166,87 @@ class _ProductHTMLParser(HTMLParser):
 
         if self._label_depth:
             self.size_parts.append(cleaned)
+
+
+class _SizeGuideHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.size_guide: dict[str, dict[str, str]] = {}
+        self._modal_depth = 0
+        self._in_table = False
+        self._cell_tag: str | None = None
+        self._cell_parts: list[str] = []
+        self._row: list[str] = []
+        self._headers: list[str] = []
+        self._rows: list[list[str]] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        attributes = dict(attrs)
+        if tag == "div" and attributes.get("id") == "medidas":
+            self._modal_depth = 1
+            return
+
+        if not self._modal_depth:
+            return
+
+        if tag == "div":
+            self._modal_depth += 1
+
+        if tag == "table":
+            self._in_table = True
+            self._headers = []
+            self._rows = []
+
+        if self._in_table and tag == "tr":
+            self._row = []
+
+        if self._in_table and tag in {"th", "td"}:
+            self._cell_tag = tag
+            self._cell_parts = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self._modal_depth:
+            return
+
+        if tag == self._cell_tag:
+            self._row.append(" ".join(self._cell_parts))
+            self._cell_tag = None
+
+        if self._in_table and tag == "tr" and self._row:
+            if self._headers:
+                self._rows.append(self._row)
+            else:
+                self._headers = self._row
+
+        if self._in_table and tag == "table":
+            self._add_table()
+            self._in_table = False
+
+        if tag == "div":
+            self._modal_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_tag and (cleaned := " ".join(data.split())):
+            self._cell_parts.append(cleaned)
+
+    def _add_table(self) -> None:
+        for index, size in enumerate(self._headers[1:], 1):
+            measurements = {
+                self._normalize_name(row[0]): row[index]
+                for row in self._rows
+                if len(row) > index
+            }
+            self.size_guide.setdefault(size, {}).update(measurements)
+
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        ascii_name = normalize("NFKD", name).encode("ascii", "ignore").decode()
+
+        return re.sub(r"[^a-z0-9]+", "_", ascii_name.casefold()).strip("_")
 
 
 def _render_status(label: str, action: str) -> None:
@@ -398,6 +480,9 @@ class BoliviaUniversoCollector(CatalogCollector):
     def _html_to_item(cls, product_url: str, html: str) -> CatalogItem:
         parser = _ProductHTMLParser()
         parser.feed(html)
+        canonical_url = cls._canonical_url(product_url)
+        size_guide_parser = _SizeGuideHTMLParser()
+        size_guide_parser.feed(html)
         sku = " ".join(parser.sku_parts)
         title = " ".join(parser.title_parts)
 
@@ -408,7 +493,7 @@ class BoliviaUniversoCollector(CatalogCollector):
             vendor=VENDOR,
             product_id=parser.product_id,
             title=title,
-            url=cls._canonical_url(product_url),
+            url=canonical_url,
             description=" ".join(dict.fromkeys(parser.description_parts)),
             image_urls=cls._product_images(
                 parser.image_urls,
@@ -421,6 +506,7 @@ class BoliviaUniversoCollector(CatalogCollector):
             all_sizes=tuple(dict.fromkeys(parser.size_parts)),
             available_sizes=tuple(dict.fromkeys(parser.size_parts)),
             size_guide_url=None,
+            size_guide=size_guide_parser.size_guide or None,
         )
 
     @staticmethod
