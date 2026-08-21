@@ -81,16 +81,18 @@ def stats_table(title: str, value_heading: str, rows: Sequence[dict]) -> Table:
 
 async def print_catalog_stats() -> None:
     """Print unique catalog values with counts and associated vendors."""
-    colors, genders, sizes = await asyncio.gather(
+    colors, genders, sizes, size_guide_urls = await asyncio.gather(
         aggregate("colors", is_array=True),
         aggregate("gender", is_array=False),
         aggregate("all_sizes", is_array=True),
+        aggregate("size_guide_url", is_array=False),
     )
 
     console = Console()
     console.print(stats_table("Colors", "Color", colors))
     console.print(stats_table("Genders", "Gender", genders))
     console.print(stats_table("All sizes", "Size", sizes))
+    console.print(f"Unique size guide URLs: {len(size_guide_urls)}")
 
 
 def main() -> None:
