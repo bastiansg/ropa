@@ -1,4 +1,4 @@
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats size-guide-stats segment-test-body
 
 
 core-build:
@@ -66,3 +66,9 @@ extract-size-guides: app-build mongo-start redis-start
 
 catalog-stats: app-build mongo-start
 	docker compose run --rm ropa-app catalog_stats
+
+size-guide-stats: app-build mongo-start
+	docker compose run --rm ropa-app size_guide_stats
+
+segment-test-body: app-build
+	docker compose run --rm -v "$(CURDIR)/resources:/src/resources" ropa-app segment_test_body

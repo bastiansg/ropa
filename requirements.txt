@@ -2,9 +2,11 @@ stamina==26.1.0
 aiolimiter==1.2.1
 tqdm==4.70.0
 httpx==0.28.1
+pillow==12.3.0
 rich==15.0.0
 aiocache[redis]==0.12.3
 curl_cffi==0.16.0
+fal_client==1.0.1
 
 # Aureka packages
 multi_agents==2.0.1
