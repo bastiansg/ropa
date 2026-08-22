@@ -21,7 +21,7 @@ collect_bolivia_universo = "ropa.scripts.collect_bolivia_universo:main"
 collect_ropa_revolver = "ropa.scripts.collect_ropa_revolver:main"
 catalog_stats = "ropa.scripts.catalog_stats:main"
 size_guide_stats = "ropa.scripts.size_guide_stats:main"
-segment_test_body = "ropa.scripts.segment_test_body:main"
+reconstruct_test_body = "ropa.scripts.reconstruct_test_body:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

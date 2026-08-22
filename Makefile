@@ -1,4 +1,4 @@
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats size-guide-stats segment-test-body
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats size-guide-stats reconstruct-test-body
 
 
 core-build:
@@ -49,26 +49,26 @@ app-stop:
 app-restart: app-stop app-up
 
 
-collect-data: app-build mongo-start
-	docker compose run --rm ropa-app collect_data
+collect-data: devcontainer-build mongo-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.collect_data" ropa-devcontainer
 
-collect-ay-not-dead: app-build mongo-start
-	docker compose run --rm ropa-app collect_ay_not_dead
+collect-ay-not-dead: devcontainer-build mongo-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.collect_ay_not_dead" ropa-devcontainer
 
-collect-bolivia-universo: app-build mongo-start
-	docker compose run --rm ropa-app collect_bolivia_universo
+collect-bolivia-universo: devcontainer-build mongo-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.collect_bolivia_universo" ropa-devcontainer
 
-collect-ropa-revolver: app-build mongo-start
-	docker compose run --rm ropa-app collect_ropa_revolver
+collect-ropa-revolver: devcontainer-build mongo-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.collect_ropa_revolver" ropa-devcontainer
 
-extract-size-guides: app-build mongo-start redis-start
-	docker compose run --rm ropa-app python -m ropa.scripts.extract_size_guides
+extract-size-guides: devcontainer-build mongo-start redis-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.extract_size_guides" ropa-devcontainer
 
-catalog-stats: app-build mongo-start
-	docker compose run --rm ropa-app catalog_stats
+catalog-stats: devcontainer-build mongo-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.catalog_stats" ropa-devcontainer
 
-size-guide-stats: app-build mongo-start
-	docker compose run --rm ropa-app size_guide_stats
+size-guide-stats: devcontainer-build mongo-start
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.size_guide_stats" ropa-devcontainer
 
-segment-test-body: app-build
-	docker compose run --rm -v "$(CURDIR)/resources:/src/resources" ropa-app segment_test_body
+reconstruct-test-body: devcontainer-build
+	docker compose -f .devcontainer/docker-compose.yml run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.reconstruct_test_body" ropa-devcontainer
