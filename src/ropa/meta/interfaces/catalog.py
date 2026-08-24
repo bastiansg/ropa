@@ -69,9 +69,7 @@ class CatalogItem(BaseModel):
 
 
 class CatalogCollector(ABC):
-    """Common interface for catalog collectors."""
 
     @abstractmethod
     def collect_items(self) -> list[CatalogItem]:
-        """Collect public catalog items."""
         ...

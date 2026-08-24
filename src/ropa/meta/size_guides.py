@@ -26,7 +26,6 @@ def _is_size_guide(value: str) -> bool:
 
 
 class SizeGuideLinkParser(HTMLParser):
-    """Extract direct or in-page size-guide URLs from product page HTML."""
 
     def __init__(self, base_url: str, product_url: str) -> None:
         super().__init__()

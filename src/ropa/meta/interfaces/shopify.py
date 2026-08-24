@@ -29,15 +29,15 @@ console = Console(stderr=True)
 
 
 class _TransientHTTPStatusError(Exception):
-    """HTTP response eligible for a bounded retry."""
+    pass
 
 
 class _HTTPRequestError(Exception):
-    """Permanent HTTP response error."""
+    pass
 
 
 class _TransportError(Exception):
-    """Transient curl transport error."""
+    pass
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -155,7 +155,6 @@ async def _request_text_uncached(
 
 
 class ShopifyCollector(CatalogCollector):
-    """Collect and normalize a public Shopify storefront catalog."""
 
     base_url: str
     vendor: str
@@ -183,7 +182,6 @@ class ShopifyCollector(CatalogCollector):
         self.max_concurrent_requests = max_concurrent_requests
 
     def collect_items(self) -> list[CatalogItem]:
-        """Collect, validate, enrich, and normalize every public product."""
         return asyncio.run(self._collect_items())
 
     async def _collect_items(self) -> list[CatalogItem]:
@@ -228,7 +226,6 @@ class ShopifyCollector(CatalogCollector):
         session: AsyncSession,
         limiter: AsyncLimiter,
     ) -> AsyncIterator[JsonObject]:
-        """Yield products until Shopify returns an empty page."""
         page = 1
         product_count = 0
 
@@ -458,7 +455,6 @@ class ShopifyCollector(CatalogCollector):
         self,
         products: Iterable[JsonObject],
     ) -> Iterable[JsonObject]:
-        """Return products whose storefront pages should be inspected."""
         return products
 
     async def _size_guide_urls(
@@ -582,7 +578,6 @@ class ShopifyCollector(CatalogCollector):
         product: JsonObject,
         size_guide_url: str | None,
     ) -> CatalogItem:
-        """Normalize one Shopify product into a catalog item."""
         variants = tuple(product.get("variants") or ())
         color_position = self._option_position(product, "color")
         size_position = self._option_position(product, "talle")
@@ -621,15 +616,12 @@ class ShopifyCollector(CatalogCollector):
         )
 
     def product_url(self, product: JsonObject) -> str:
-        """Return the canonical product URL."""
         return f"{self.base_url}/products/{product['handle']}"
 
     def gender(self, product: JsonObject) -> str:
-        """Return the provider-specific product gender."""
         return "unisex"
 
     def categories(self, product: JsonObject) -> tuple[str, ...]:
-        """Return the provider-specific product categories."""
         product_type = str(product.get("product_type") or "").casefold()
 
         return (product_type,) if product_type else ()

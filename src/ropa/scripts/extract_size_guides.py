@@ -19,6 +19,7 @@ from tqdm import tqdm
 from ropa.config import config
 from ropa.db import get_mongo_connector
 from ropa.llm_agents import SizeTableExtractor
+from ropa.scripts.console import render_step
 
 COLLECTION_NAME = "catalog_items"
 OUTPUT_FIELD = "size_guide"
@@ -35,11 +36,10 @@ console = Console(stderr=True)
 
 
 class SizeGuideImageError(Exception):
-    """Raised when a size-guide URL does not return a supported image."""
+    pass
 
 
 class SizeGuideImageParser(HTMLParser):
-    """Extract the first image from a size-guide page body."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -110,16 +110,6 @@ async def _resolve_image_url(
         raise SizeGuideImageError(f"{size_guide_url} does not contain an image")
 
     return urljoin(size_guide_url, parser.image_url)
-
-
-def _render_status(label: str, action: str) -> None:
-    message = Text()
-    message.append("\n┌─[ ", style="dim magenta")
-    message.append(label, style="bold white")
-    message.append(" ]\n", style="dim magenta")
-    message.append("└──> ", style="dim magenta")
-    message.append(action, style="dim bright_cyan")
-    console.print(message)
 
 
 def _render_detail(label: str, value: object) -> None:
@@ -210,7 +200,7 @@ async def process_size_guide_url(
 
 
 async def extract_size_guides() -> None:
-    _render_status("SIZE TABLE EXTRACTOR", "SCANNING STORED CATALOG...")
+    render_step("SIZE TABLE EXTRACTOR", "SCANNING STORED CATALOG...")
     mongo_connector = get_mongo_connector()
     collection = mongo_connector.db[COLLECTION_NAME]
     document_filter = {
@@ -246,7 +236,7 @@ async def extract_size_guides() -> None:
                 failed += not succeeded
 
     await extract_size_guide.cache.close()
-    _render_status("EXTRACTION COMPLETE", f"{extracted} DOCUMENTS UPDATED")
+    render_step("EXTRACTION COMPLETE", f"{extracted} DOCUMENTS UPDATED")
     _render_detail("SIZE GUIDES FAILED", failed)
 
 

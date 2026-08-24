@@ -61,15 +61,15 @@ console = Console(stderr=True)
 
 
 class _TransientHTTPStatusError(Exception):
-    """HTTP response eligible for a bounded retry."""
+    pass
 
 
 class _HTTPRequestError(Exception):
-    """Permanent HTTP response error."""
+    pass
 
 
 class _TransportError(Exception):
-    """Transient curl transport error."""
+    pass
 
 
 class _CatalogHTMLParser(HTMLParser):
@@ -353,7 +353,6 @@ def _validate_response(url: str, status_code: int) -> None:
 
 
 class BoliviaUniversoCollector(CatalogCollector):
-    """Collect products from the Bolivia Universo public storefront."""
 
     def __init__(
         self,
@@ -372,7 +371,6 @@ class BoliviaUniversoCollector(CatalogCollector):
         self.max_concurrent_requests = max_concurrent_requests
 
     def collect_items(self) -> list[CatalogItem]:
-        """Collect and normalize every product listed by the storefront."""
         return asyncio.run(self._collect_items())
 
     async def _collect_items(self) -> list[CatalogItem]:
@@ -400,7 +398,6 @@ class BoliviaUniversoCollector(CatalogCollector):
         self,
         session: AsyncSession,
     ) -> AsyncIterator[str]:
-        """Yield product URLs from the session-backed catalog pagination."""
         catalog_html = await _request_text(
             session,
             CATALOG_URL,

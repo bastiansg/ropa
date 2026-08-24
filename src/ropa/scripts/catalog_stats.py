@@ -1,19 +1,16 @@
 import asyncio
 from collections.abc import Sequence
-from itertools import chain
 
-from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich.text import Text
 
 from ropa.db import get_mongo_connector
+from ropa.scripts.console import cyberpunk_table, render_values
 
 COLLECTION_NAME = "catalog_items"
 
 
 def aggregation_pipeline(field: str, *, is_array: bool) -> list[dict]:
-    """Build a pipeline that counts unique field values and their vendors."""
     values = f"${field}" if is_array else [f"${field}"]
 
     return [
@@ -32,7 +29,6 @@ def aggregation_pipeline(field: str, *, is_array: bool) -> list[dict]:
 
 
 async def aggregate(field: str, *, is_array: bool) -> list[dict]:
-    """Return unique catalog values with their counts and vendors."""
     collection = get_mongo_connector().db[COLLECTION_NAME]
     cursor = await collection.aggregate(
         aggregation_pipeline(field, is_array=is_array),
@@ -42,45 +38,23 @@ async def aggregate(field: str, *, is_array: bool) -> list[dict]:
 
 
 def stats_table(title: str, value_heading: str, rows: Sequence[dict]) -> Table:
-    """Create a table for aggregated catalog item values."""
-    table = Table(
-        title=f":: {title.upper()} // {len(rows)} UNIQUE ::",
-        title_style="bold bright_magenta",
-        border_style="dim magenta",
-        header_style="bold bright_cyan",
-        box=box.ASCII,
-    )
+    table = cyberpunk_table(f":: {title.upper()} // {len(rows)} UNIQUE ::")
 
     table.add_column(value_heading.upper(), style="dim white")
     table.add_column("COUNT", justify="right", style="bright_cyan")
     table.add_column("VENDORS")
 
     for row in rows:
-        vendors = Text.assemble(
-            *chain.from_iterable(
-                (
-                    (Text(" // ", style="bold bright_white"), vendor)
-                    if index
-                    else (vendor,)
-                )
-                for index, vendor in enumerate(
-                    Text(name, style="dim white")
-                    for name in sorted(map(str, row["vendors"]))
-                )
-            )
-        )
-
         table.add_row(
             str(row["_id"]),
             str(row["count"]),
-            vendors,
+            render_values(sorted(map(str, row["vendors"]))),
         )
 
     return table
 
 
 async def print_catalog_stats() -> None:
-    """Print unique catalog values with counts and associated vendors."""
     colors, genders, sizes, size_guide_urls = await asyncio.gather(
         aggregate("colors", is_array=True),
         aggregate("gender", is_array=False),

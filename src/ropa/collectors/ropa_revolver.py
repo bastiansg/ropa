@@ -4,7 +4,6 @@ from ropa.meta.interfaces import JsonObject, ShopifyCollector
 
 
 class RopaRevolverCollector(ShopifyCollector):
-    """Collect Ropa Revolver products from its public Shopify storefront."""
 
     base_url = "https://roparevolver.com"
     vendor = "Ropa Revolver"

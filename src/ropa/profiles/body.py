@@ -32,22 +32,21 @@ class Measurement(BaseModel):
 
 class BodyProfile(BaseModel):
     height: Measurement
-    chest_circumference: Measurement | None
-    waist_circumference: Measurement | None
-    hip_circumference: Measurement | None
+    chest_circumference: Measurement
+    waist_circumference: Measurement
+    hip_circumference: Measurement
     shoulder_width: Measurement | None
     arm_sleeve_length: Measurement | None
     inseam_length: Measurement | None
     foot_length: Measurement | None
-    neck_circumference: Measurement | None
+    neck_circumference: Measurement
 
 
 class ProfileGenerationError(RuntimeError):
-    """Raised when SAM 3D Body does not return usable body geometry."""
+    pass
 
 
 class BodyProfileGenerator:
-    """Generate height-calibrated measurements from two SAM 3D body meshes."""
 
     def __init__(
         self,
@@ -64,7 +63,6 @@ class BodyProfileGenerator:
         side_image: str | Path,
         height_cm: float,
     ) -> BodyProfile:
-        """Reconstruct both views and average their independently scaled profiles."""
         if height_cm <= 0:
             raise ValueError("height_cm must be greater than zero")
 
@@ -110,7 +108,6 @@ class BodyProfileGenerator:
 
 
 async def fetch_mesh(client: httpx.AsyncClient, url: str) -> bytes:
-    """Download one PLY body mesh."""
     response = await client.get(url)
     _ = response.raise_for_status()
 
@@ -118,7 +115,6 @@ async def fetch_mesh(client: httpx.AsyncClient, url: str) -> bytes:
 
 
 def load_mesh(content: bytes) -> trimesh.Trimesh:
-    """Load a SAM 3D Body PLY response into a triangle mesh."""
     mesh = trimesh.load(  # pyright: ignore[reportUnknownMemberType]
         BytesIO(content),
         file_type="ply",
@@ -134,7 +130,6 @@ def point(
     keypoints: dict[str, tuple[float, float, float]],
     name: str,
 ) -> Vector:
-    """Return one required MHR keypoint as a vector."""
     coordinates = keypoints.get(name)
     if coordinates is None:
         raise ProfileGenerationError(f"SAM 3D Body omitted the {name} keypoint")
@@ -153,7 +148,6 @@ def polyline_length(points: tuple[Vector, ...]) -> float:
 def body_axis(
     keypoints: dict[str, tuple[float, float, float]],
 ) -> Vector:
-    """Return the normalized ankle-to-neck direction of the reconstructed body."""
     ankles = midpoint(point(keypoints, "left-ankle"), point(keypoints, "right-ankle"))
     axis = point(keypoints, "neck") - ankles
     length = np.linalg.norm(axis)
@@ -164,7 +158,6 @@ def body_axis(
 
 
 def mesh_scale(mesh: trimesh.Trimesh, axis: Vector, height_cm: float) -> float:
-    """Calculate model-unit to centimeter scale along the person's body axis."""
     projections = np.asarray(cast(object, mesh.vertices), dtype=np.float64) @ axis
     mesh_height = float(np.ptp(projections))
     if mesh_height <= 0:
@@ -178,7 +171,6 @@ def section_circumference(
     axis: Vector,
     level: float,
 ) -> float | None:
-    """Return the longest closed mesh cross-section at one body-axis level."""
     segments = cast(
         NDArray[np.float64],
         trimesh.intersections.mesh_plane(  # pyright: ignore[reportUnknownMemberType]
@@ -238,6 +230,68 @@ def section_circumference(
     return max(lengths.values(), default=None)
 
 
+def mapped_mesh_levels(
+    mesh: trimesh.Trimesh,
+    keypoints: dict[str, tuple[float, float, float]],
+    axis: Vector,
+    levels: dict[str, float],
+) -> tuple[dict[str, float], float]:
+    mesh_projections = (
+        np.asarray(cast(object, mesh.vertices), dtype=np.float64) @ axis
+    )
+
+    keypoint_projections = np.asarray(
+        [
+            np.asarray(coordinates, dtype=np.float64) @ axis
+            for coordinates in keypoints.values()
+        ],
+        dtype=np.float64,
+    )
+
+    mesh_min = float(mesh_projections.min())
+    mesh_max = float(mesh_projections.max())
+    keypoint_min = float(keypoint_projections.min())
+    keypoint_max = float(keypoint_projections.max())
+    mesh_height = mesh_max - mesh_min
+    keypoint_height = keypoint_max - keypoint_min
+    if mesh_height <= 0 or keypoint_height <= 0:
+        raise ProfileGenerationError("SAM 3D Body returned degenerate geometry")
+
+    return (
+        {
+            name: mesh_min
+            + (level - keypoint_min) / keypoint_height * mesh_height
+            for name, level in levels.items()
+        },
+        mesh_height,
+    )
+
+
+def circumference_measurement(
+    mesh: trimesh.Trimesh,
+    axis: Vector,
+    level: float,
+    window: float,
+    scale: float,
+    name: str,
+    *,
+    minimum: bool,
+) -> Measurement:
+    circumferences = tuple(
+        circumference
+        for sample_level in np.linspace(level - window, level + window, 17)
+        if (circumference := section_circumference(mesh, axis, sample_level))
+        is not None
+        and circumference > 0
+    )
+    if not circumferences:
+        raise ProfileGenerationError(f"Could not measure {name} circumference")
+
+    circumference = min(circumferences) if minimum else max(circumferences)
+
+    return Measurement(value=round(circumference * scale, 1))
+
+
 def average_bilateral(left: float, right: float) -> float:
     return (left + right) / 2
 
@@ -247,7 +301,6 @@ def profile_from_reconstruction(
     keypoints: dict[str, tuple[float, float, float]],
     height_cm: float,
 ) -> BodyProfile:
-    """Measure a single SAM 3D reconstruction after height calibration."""
     axis = body_axis(keypoints)
     scale = mesh_scale(mesh, axis, height_cm)
     neck = point(keypoints, "neck")
@@ -255,14 +308,31 @@ def profile_from_reconstruction(
     neck_level = float(neck @ axis)
     hip_level = float(hips @ axis)
     torso_height = neck_level - hip_level
-    levels = {
+    keypoint_levels = {
         "chest": hip_level + torso_height * 0.68,
         "waist": hip_level + torso_height * 0.3,
         "hip": hip_level,
         "neck": neck_level,
     }
+    levels, mesh_height = mapped_mesh_levels(
+        mesh,
+        keypoints,
+        axis,
+        keypoint_levels,
+    )
+
+    window = mesh_height * 0.025
     circumferences = {
-        name: section_circumference(mesh, axis, level) for name, level in levels.items()
+        name: circumference_measurement(
+            mesh,
+            axis,
+            level,
+            window,
+            scale,
+            name,
+            minimum=name in {"waist", "neck"},
+        )
+        for name, level in levels.items()
     }
     left_arm = polyline_length(
         (
@@ -306,9 +376,9 @@ def profile_from_reconstruction(
 
     return BodyProfile(
         height=Measurement(value=height_cm),
-        chest_circumference=measurement(circumferences["chest"], scale),
-        waist_circumference=measurement(circumferences["waist"], scale),
-        hip_circumference=measurement(circumferences["hip"], scale),
+        chest_circumference=circumferences["chest"],
+        waist_circumference=circumferences["waist"],
+        hip_circumference=circumferences["hip"],
         shoulder_width=measurement(float(shoulder_width), scale),
         arm_sleeve_length=measurement(
             average_bilateral(left_arm, right_arm),
@@ -322,12 +392,11 @@ def profile_from_reconstruction(
             average_bilateral(float(left_foot), float(right_foot)),
             scale,
         ),
-        neck_circumference=measurement(circumferences["neck"], scale),
+        neck_circumference=circumferences["neck"],
     )
 
 
 def measurement(value: float | None, scale: float = 1) -> Measurement | None:
-    """Scale and round an available measurement for the public profile."""
     return (
         Measurement(value=round(value * scale, 1))
         if value is not None and value > 0
@@ -339,7 +408,6 @@ def average_profiles(
     profiles: tuple[BodyProfile, BodyProfile],
     height_cm: float,
 ) -> BodyProfile:
-    """Average available measurements from the front and side reconstructions."""
 
     def average(
         selector: Callable[[BodyProfile], Measurement | None],
@@ -352,14 +420,27 @@ def average_profiles(
 
         return measurement(sum(values) / len(values)) if values else None
 
+    def average_required(
+        selector: Callable[[BodyProfile], Measurement],
+    ) -> Measurement:
+        values = tuple(selector(profile).value for profile in profiles)
+
+        return Measurement(value=round(sum(values) / len(values), 1))
+
     return BodyProfile(
         height=Measurement(value=height_cm),
-        chest_circumference=average(lambda profile: profile.chest_circumference),
-        waist_circumference=average(lambda profile: profile.waist_circumference),
-        hip_circumference=average(lambda profile: profile.hip_circumference),
+        chest_circumference=average_required(
+            lambda profile: profile.chest_circumference
+        ),
+        waist_circumference=average_required(
+            lambda profile: profile.waist_circumference
+        ),
+        hip_circumference=average_required(lambda profile: profile.hip_circumference),
         shoulder_width=average(lambda profile: profile.shoulder_width),
         arm_sleeve_length=average(lambda profile: profile.arm_sleeve_length),
         inseam_length=average(lambda profile: profile.inseam_length),
         foot_length=average(lambda profile: profile.foot_length),
-        neck_circumference=average(lambda profile: profile.neck_circumference),
+        neck_circumference=average_required(
+            lambda profile: profile.neck_circumference
+        ),
     )

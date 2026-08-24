@@ -45,7 +45,6 @@ UNISEX_TAGS = {"unisex", "unisex_fw26"}
 
 
 class SizeGuidePageParser(HTMLParser):
-    """Extract the first image URL from an AY NOT DEAD size-guide page."""
 
     def __init__(self, page_url: str) -> None:
         super().__init__()
@@ -69,7 +68,6 @@ class SizeGuidePageParser(HTMLParser):
 
 
 class AyNotDeadCollector(ShopifyCollector):
-    """Collect AY NOT DEAD products from its public Shopify storefront."""
 
     base_url = "https://aynotdead.com"
     vendor = "Ay Not Dead"

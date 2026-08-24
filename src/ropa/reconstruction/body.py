@@ -1,11 +1,32 @@
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
 import fal_client
+from aiocache import RedisCache, cached
+from aiocache.serializers import PickleSerializer
 from pydantic import BaseModel
 
+from ropa.config import config
+
 SAM3D_BODY_MODEL = "fal-ai/sam-3/3d-body"
+
+
+def _reconstruction_cache_key(
+    _function: object,
+    _reconstructor: object,
+    image: str | Path,
+) -> str:
+    image_identity = str(image)
+    if urlparse(image_identity).scheme in {"http", "https"}:
+        return sha256(image_identity.encode()).hexdigest()
+
+    path = Path(image)
+    metadata = path.stat()
+    image_identity = f"{path.resolve()}:{metadata.st_size}:{metadata.st_mtime_ns}"
+
+    return sha256(image_identity.encode()).hexdigest()
 
 
 class FalAsyncClient(Protocol):
@@ -25,7 +46,7 @@ class BodyReconstruction(BaseModel):
 
 
 class BodyReconstructionError(RuntimeError):
-    """Raised when SAM 3D Body does not return usable reconstruction data."""
+    pass
 
 
 class BodyReconstructor(Protocol):
@@ -33,13 +54,22 @@ class BodyReconstructor(Protocol):
 
 
 class FalBodyReconstructor:
-    """Reconstruct one person with the fal-hosted Meta SAM 3D Body model."""
 
     def __init__(self, *, client: FalAsyncClient | None = None) -> None:
         self.client = client or fal_client.AsyncClient()
 
+    @cached(
+        cache=RedisCache,
+        endpoint=config.redis_host,
+        port=config.redis_port,
+        db=config.redis_db,
+        pool_max_size=32,
+        namespace="fal_body_reconstructor",
+        ttl=None,
+        key_builder=_reconstruction_cache_key,
+        serializer=PickleSerializer(),
+    )
     async def reconstruct(self, image: str | Path) -> BodyReconstruction:
-        """Return the first detected person's mesh, visualization, and keypoints."""
         result = await self.client.subscribe(
             SAM3D_BODY_MODEL,
             arguments={
