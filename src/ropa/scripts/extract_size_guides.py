@@ -2,9 +2,11 @@ import asyncio
 from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
+import re
+from typing import Protocol, cast
 from urllib.parse import urljoin, urlparse
 
-from aiocache import Cache, cached
+from aiocache import RedisCache, cached
 from aiocache.serializers import JsonSerializer
 from aiolimiter import AsyncLimiter
 from curl_cffi.requests import AsyncSession, Response
@@ -30,6 +32,11 @@ SUPPORTED_IMAGE_TYPES = {
     "image/png",
     "image/webp",
 }
+NUMBER_PATTERN = re.compile(r"^\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:cm)?\s*$")
+RANGE_PATTERN = re.compile(
+    r"^\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:cm)?\s*"
+    r"[-–—]\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:cm)?\s*$"
+)
 
 size_table_extractor = SizeTableExtractor()
 console = Console(stderr=True)
@@ -37,6 +44,10 @@ console = Console(stderr=True)
 
 class SizeGuideImageError(Exception):
     pass
+
+
+class _CachedFunction(Protocol):
+    cache: RedisCache
 
 
 class SizeGuideImageParser(HTMLParser):
@@ -131,7 +142,7 @@ def _cache_key(
 
 
 @cached(
-    cache=Cache.REDIS,
+    cache=RedisCache,
     endpoint=config.redis_host,
     port=config.redis_port,
     db=config.redis_db,
@@ -176,6 +187,63 @@ async def extract_size_guide(
     return output.data
 
 
+def measurement_value(value: object) -> object:
+    if not isinstance(value, str) or not (match := NUMBER_PATTERN.fullmatch(value)):
+        return value
+
+    normalized = match.group(1).replace(",", ".")
+    if "." in normalized:
+        return float(normalized)
+
+    return int(normalized)
+
+
+def size_guide_measurements(value: object) -> object:
+    if isinstance(value, dict):
+        if value.get("unit") == "cm" and ({"value", "range"} & value.keys()):
+            return value
+
+        return {
+            key: size_guide_measurements(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [size_guide_measurements(item) for item in value]
+
+    if isinstance(value, str) and (match := RANGE_PATTERN.fullmatch(value)):
+        return {
+            "range": [
+                measurement_value(match.group(1)),
+                measurement_value(match.group(2)),
+            ],
+            "unit": "cm",
+        }
+
+    return {"value": measurement_value(value), "unit": "cm"}
+
+
+async def normalize_stored_size_guides(collection: AsyncCollection) -> None:
+    documents = collection.find(
+        {OUTPUT_FIELD: {"$type": "object"}},
+        {OUTPUT_FIELD: 1},
+    )
+
+    updates = [
+        collection.update_one(
+            {"_id": document["_id"]},
+            {
+                "$set": {
+                    OUTPUT_FIELD: size_guide_measurements(document[OUTPUT_FIELD])
+                }
+            },
+        )
+        async for document in documents
+    ]
+
+    await asyncio.gather(*updates)
+
+
 async def process_size_guide_url(
     session: AsyncSession,
     limiter: AsyncLimiter,
@@ -193,7 +261,7 @@ async def process_size_guide_url(
 
     result = await collection.update_many(
         {"size_guide_url": size_guide_url},
-        {"$set": {OUTPUT_FIELD: size_guide}},
+        {"$set": {OUTPUT_FIELD: size_guide_measurements(size_guide)}},
     )
 
     return result.matched_count, True
@@ -203,6 +271,7 @@ async def extract_size_guides() -> None:
     render_step("SIZE TABLE EXTRACTOR", "SCANNING STORED CATALOG...")
     mongo_connector = get_mongo_connector()
     collection = mongo_connector.db[COLLECTION_NAME]
+    await normalize_stored_size_guides(collection)
     document_filter = {
         "size_guide_url": {"$type": "string", "$ne": ""},
     }
@@ -235,7 +304,7 @@ async def extract_size_guides() -> None:
                 extracted += updated
                 failed += not succeeded
 
-    await extract_size_guide.cache.close()
+    await cast(_CachedFunction, extract_size_guide).cache.close()
     render_step("EXTRACTION COMPLETE", f"{extracted} DOCUMENTS UPDATED")
     _render_detail("SIZE GUIDES FAILED", failed)
 
