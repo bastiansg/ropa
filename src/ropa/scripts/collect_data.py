@@ -1,5 +1,7 @@
 import asyncio
 
+from xxhash import xxh3_128_hexdigest
+
 from ropa.collectors import (
     AyNotDeadCollector,
     BoliviaUniversoCollector,
@@ -21,11 +23,15 @@ def collectors() -> list[tuple[str, CatalogCollector]]:
 
 
 def document(item: CatalogItem) -> dict:
-    return item.model_dump(mode="json")
+    doc = item.model_dump(mode="json")
+    identity = f"{item.vendor}\0{item.product_id}".encode()
+    doc["_id"] = xxh3_128_hexdigest(identity)
+
+    return doc
 
 
 def document_filter(doc: dict) -> dict:
-    return {"_id": doc["product_id"]}
+    return {"_id": doc["_id"]}
 
 
 async def store_items(items: list[CatalogItem]) -> int:

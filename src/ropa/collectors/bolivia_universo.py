@@ -128,13 +128,20 @@ class _ProductHTMLParser(HTMLParser):
         if self._sizes_depth and tag == "div" and fitit != "sizes":
             self._sizes_depth += 1
 
-        if tag == "a" and "active" in classes and "btn-otros" in classes:
-            if color := attributes.get("title"):
-                self.colors.append(color)
+        if (
+            tag == "a"
+            and "active" in classes
+            and "btn-otros" in classes
+            and (color := attributes.get("title"))
+        ):
+            self.colors.append(color)
 
-        if tag == "input" and attributes.get("id") == "idProducto":
-            if value := attributes.get("value"):
-                self.product_id = int(value)
+        if (
+            tag == "input"
+            and attributes.get("id") == "idProducto"
+            and (value := attributes.get("value"))
+        ):
+            self.product_id = int(value)
 
         if tag in {"img", "source"}:
             image_url = attributes.get("src") or attributes.get("srcset")
