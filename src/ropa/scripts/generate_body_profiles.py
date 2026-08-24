@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 from tqdm import tqdm
@@ -15,6 +16,7 @@ BODIES_DIR = Path("resources/test-bodies")
 
 class BodyMetadata(BaseModel):
     height: Measurement
+    gender: Literal["female", "male"]
 
 
 def body_directories() -> Iterator[Path]:
@@ -24,12 +26,12 @@ def body_directories() -> Iterator[Path]:
 async def generate_profile(
     generator: BodyProfileGenerator,
     body_directory: Path,
-) -> tuple[str, BodyProfile]:
+) -> tuple[str, BodyMetadata, BodyProfile]:
     metadata = BodyMetadata.model_validate_json(
         (body_directory / "metadata.json").read_text()
     )
 
-    return body_directory.name, await generator.generate(
+    return body_directory.name, metadata, await generator.generate(
         body_directory / "01-front.png",
         body_directory / "02-side.png",
         metadata.height.value,
@@ -42,11 +44,15 @@ async def generate_body_profiles() -> int:
     mongo_connector = get_mongo_connector()
 
     async def generate_and_store(body_directory: Path) -> str:
-        body_name, profile = await generate_profile(generator, body_directory)
+        body_name, metadata, profile = await generate_profile(generator, body_directory)
         await mongo_connector.upsert_doc(
             COLLECTION_NAME,
             {"_id": body_name},
-            {"_id": body_name, **profile.model_dump(mode="json")},
+            {
+                "_id": body_name,
+                "gender": metadata.gender,
+                **profile.model_dump(mode="json"),
+            },
         )
 
         return body_name
