@@ -8,8 +8,11 @@ from pydantic import (
     NonNegativeFloat,
     PositiveInt,
     StrictStr,
+    computed_field,
     field_validator,
 )
+
+from ropa.ontology.colors import Color, get_parent_color
 
 
 class CatalogItem(BaseModel):
@@ -38,7 +41,18 @@ class CatalogItem(BaseModel):
     @field_validator("colors")
     @classmethod
     def normalize_colors(cls, colors: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(map(cls._normalize_color, colors))
+        normalized_colors = map(cls._normalize_color, colors)
+
+        return tuple(
+            color
+            for color in normalized_colors
+            if color not in {"color unico", "unico", "único"}
+        )
+
+    @computed_field
+    @property
+    def color_family(self) -> tuple[Color, ...]:
+        return tuple(dict.fromkeys(map(get_parent_color, self.colors)))
 
     @staticmethod
     def _normalize_color(color: str) -> str:

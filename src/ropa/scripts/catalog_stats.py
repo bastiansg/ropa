@@ -55,7 +55,8 @@ def stats_table(title: str, value_heading: str, rows: Sequence[dict]) -> Table:
 
 
 async def print_catalog_stats() -> None:
-    colors, genders, sizes, size_guide_urls = await asyncio.gather(
+    categories, colors, genders, sizes, size_guide_urls = await asyncio.gather(
+        aggregate("categories", is_array=True),
         aggregate("colors", is_array=True),
         aggregate("gender", is_array=False),
         aggregate("all_sizes", is_array=True),
@@ -63,6 +64,7 @@ async def print_catalog_stats() -> None:
     )
 
     console = Console()
+    console.print(stats_table("Categories", "Category", categories))
     console.print(stats_table("Colors", "Color", colors))
     console.print(stats_table("Genders", "Gender", genders))
     console.print(stats_table("All sizes", "Size", sizes))

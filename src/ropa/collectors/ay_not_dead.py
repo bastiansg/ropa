@@ -7,7 +7,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 from aiolimiter import AsyncLimiter
 from curl_cffi.requests import AsyncSession
 
-from ropa.meta.interfaces import JsonObject, ShopifyCollector
+from ropa.meta.interfaces import CatalogItem, JsonObject, ShopifyCollector
 
 IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 
@@ -72,6 +72,18 @@ class AyNotDeadCollector(ShopifyCollector):
     base_url = "https://aynotdead.com"
     vendor = "Ay Not Dead"
     cache_namespace = "ay_not_dead:http"
+
+    def product_to_item(
+        self,
+        product: JsonObject,
+        size_guide_url: str | None,
+    ) -> CatalogItem:
+        item = super().product_to_item(product, size_guide_url)
+
+        if any(color in {"unico", "único"} for color in item.colors):
+            return item.model_copy(update={"colors": ()})
+
+        return item
 
     async def _resolve_size_guide_url(
         self,

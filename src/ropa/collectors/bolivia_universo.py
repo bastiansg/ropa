@@ -12,12 +12,14 @@ import stamina
 from aiocache import Cache, cached_stampede
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.errors import RequestsError
+from pydantic_ai import ImageUrl
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 from tqdm import tqdm
 
 from ropa.config import config
+from ropa.llm_agents import GarmentColorExtractor, GarmentColorExtractorInput
 from ropa.meta.interfaces import CatalogCollector, CatalogItem
 
 BASE_URL = "https://boliviauniverso.com"
@@ -58,6 +60,7 @@ ITEM_CATEGORY_PATTERN = re.compile(
 )
 
 console = Console(stderr=True)
+garment_color_extractor = GarmentColorExtractor()
 
 
 class _TransientHTTPStatusError(Exception):
@@ -478,10 +481,10 @@ class BoliviaUniversoCollector(CatalogCollector):
                 self.timeout_seconds,
             )
 
-        return self._html_to_item(product_url, html)
+        return await self._html_to_item(product_url, html)
 
     @classmethod
-    def _html_to_item(cls, product_url: str, html: str) -> CatalogItem:
+    async def _html_to_item(cls, product_url: str, html: str) -> CatalogItem:
         parser = _ProductHTMLParser()
         parser.feed(html)
         canonical_url = cls._canonical_url(product_url)
@@ -489,21 +492,36 @@ class BoliviaUniversoCollector(CatalogCollector):
         size_guide_parser.feed(html)
         sku = " ".join(parser.sku_parts)
         title = " ".join(parser.title_parts)
+        description = " ".join(dict.fromkeys(parser.description_parts))
 
         if parser.product_id is None:
             raise ValueError(f"Missing product id in {product_url}")
+
+        image_urls = cls._product_images(
+            parser.image_urls,
+            parser.product_id,
+        )
+        colors = tuple(dict.fromkeys(parser.colors))
+
+        if tuple(map(str.casefold, colors)) == ("color unico",):
+            output = await garment_color_extractor.generate_cached(
+                user_prompt="Identify the color of the described garment.",
+                agent_deps=GarmentColorExtractorInput(
+                    title=title,
+                    description=description,
+                ),
+                user_content=ImageUrl(url=image_urls[0]),
+            )
+            colors = (output.color,)
 
         return CatalogItem(
             vendor=VENDOR,
             product_id=parser.product_id,
             title=title,
             url=canonical_url,
-            description=" ".join(dict.fromkeys(parser.description_parts)),
-            image_urls=cls._product_images(
-                parser.image_urls,
-                parser.product_id,
-            ),
-            colors=tuple(dict.fromkeys(parser.colors)),
+            description=description,
+            image_urls=image_urls,
+            colors=colors,
             gender=cls._gender(sku),
             price=cls._price(html),
             categories=cls._categories(html, title),
