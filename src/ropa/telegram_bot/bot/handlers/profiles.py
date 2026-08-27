@@ -133,6 +133,7 @@ async def select_profile(
     assert chat_data is not None
     profile = BodyProfile.model_validate(document)
     chat_data["profile"] = profile
+    chat_data["profile_id"] = profile_id
     chat_data["session_id"] = str(uuid4())
 
     reconstruction_images = get_reconstruction_images(profile_id)

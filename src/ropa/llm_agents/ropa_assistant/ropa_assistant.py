@@ -1,8 +1,9 @@
 from pathlib import Path
+from typing import Any
 
 from llm_agents.message_history import MongoDBMessageHistory
 from llm_agents.meta.interfaces import LLMAgent
-from pydantic import BaseModel, Field, StrictStr
+from pydantic import BaseModel, Field, StrictBool, StrictStr
 from pydantic_ai import Agent, NativeOutput, RunContext
 from pydantic_ai.capabilities import ReinjectSystemPrompt
 from pydantic_ai.models.openai import OpenAIChatModelSettings
@@ -10,41 +11,40 @@ from pydantic_ai.models.openai import OpenAIChatModelSettings
 from ropa.llm_agents.tools import (
     centimeters_to_eu_footwear_size_tool,
     centimeters_to_us_footwear_size_tool,
-    get_catalog_schema_tool,
     ontology_tools,
     search_catalog_tool,
+    store_recommended_items_tool,
 )
 from ropa.llm_agents.utils import hide_tools_after_limit, tool_logging_handler
 from ropa.profiles import BodyProfile
 
 
-class RopaAssistantInput(BaseModel):
-    question: StrictStr
+class RopaAssistantDeps(BaseModel):
+    catalog_schema: dict[str, Any]
     profile: BodyProfile
+    profile_id: StrictStr
+    request_id: StrictStr
 
 
 class RopaAssistantOutput(BaseModel):
-    recommended_item_ids: list[StrictStr] = Field(
-        description=(
-            "MongoDB `_id` values of the documents, ordered from most to least "
-            "relevant."
-        ),
+    recommendations_stored: StrictBool = Field(
+        description="Whether the recommendations were stored successfully.",
     )
 
 
 agent = Agent(
     name="ropa-assistant",
-    model="gpt-5.6-sol",
+    model="gpt-5.6-luna",
     model_settings=OpenAIChatModelSettings(openai_reasoning_effort="none"),
     system_prompt=LLMAgent.read_file(
         file_path=str(Path(__file__).with_name("system-prompt.md"))
     ),
-    deps_type=RopaAssistantInput,
+    deps_type=RopaAssistantDeps,
     output_type=NativeOutput(RopaAssistantOutput),
     retries=3,
     tools=[
-        get_catalog_schema_tool,
         search_catalog_tool,
+        store_recommended_items_tool,
         *ontology_tools,
         centimeters_to_eu_footwear_size_tool,
         centimeters_to_us_footwear_size_tool,
@@ -56,7 +56,7 @@ agent = Agent(
 
 
 @agent.system_prompt
-async def get_system_prompt(ctx: RunContext[RopaAssistantInput]) -> str:
+async def get_system_prompt(ctx: RunContext[RopaAssistantDeps]) -> str:
     system_prompt = LLMAgent.read_file(
         file_path=str(Path(__file__).with_name("system-prompt.md"))
     )
@@ -64,7 +64,7 @@ async def get_system_prompt(ctx: RunContext[RopaAssistantInput]) -> str:
     return system_prompt.format(**ctx.deps.model_dump())
 
 
-class RopaAssistant(LLMAgent[RopaAssistantInput, RopaAssistantOutput]):
+class RopaAssistant(LLMAgent[RopaAssistantDeps, RopaAssistantOutput]):
     def __init__(
         self,
         max_concurrency: int = 10,

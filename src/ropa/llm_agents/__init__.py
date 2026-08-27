@@ -9,6 +9,7 @@ from .size_table_extractor.size_table_extractor import (  # noqa
 )
 from .ropa_assistant.ropa_assistant import (  # noqa
     RopaAssistant,
-    RopaAssistantInput,
+    RopaAssistantDeps,
     RopaAssistantOutput,
 )
+from ropa.recommendations import RecommendedItem  # noqa

@@ -395,19 +395,19 @@ INVERTED_SIZE_MAP: dict[ItemType, dict[str, Size]] = {
     }
     for item_type, sizes in SIZE_MAP.root.items()
 }
-SIZE_CATEGORIES: dict[Size, None] = {
-    size: None
-    for sizes in SIZE_MAP.root.values()
-    for size in sizes
-}
-
-
 def get_size_variants(item_type: ItemType, size: Size) -> list[str]:
-    return SIZE_MAP[item_type][size]
+    sizes = SIZE_MAP[item_type]
+    if size not in sizes:
+        raise ValueError(
+            f"Size {size!r} is not available for item type {item_type!r}. "
+            f"Available sizes: {', '.join(sizes)}."
+        )
+
+    return sizes[size]
 
 
-def get_sizes() -> KeysView[Size]:
-    return SIZE_CATEGORIES.keys()
+def get_sizes(item_type: ItemType) -> KeysView[Size]:
+    return SIZE_MAP[item_type].keys()
 
 
 def get_parent_size(item_type: ItemType, variant: str) -> Size:

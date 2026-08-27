@@ -10,6 +10,7 @@ curl_cffi==0.16.0
 fal_client==1.0.1
 xxhash==4.0.1
 python-telegram-bot==22.8
+logfire==4.41.0
 
 # Aureka packages
 multi_agents==2.0.1
