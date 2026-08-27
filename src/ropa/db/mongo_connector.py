@@ -34,16 +34,18 @@ class MongoConnector:
         self,
         collection: str,
         filter: dict = {},
-        fields: dict = {},
+        projection: list[str] | dict = {},
     ) -> dict | None:
-        return await self.db[collection].find_one(filter, fields)
+        return await self.db[collection].find_one(filter, projection)
 
     def find_multiple(
         self,
         collection: str,
         filter: dict = {},
+        projection: list[str] | dict = {},
+        limit: int = 0,
     ) -> AsyncCursor[dict]:
-        return self.db[collection].find(filter)
+        return self.db[collection].find(filter, projection).limit(limit)
 
     async def create_index(self, collection: str, key: str) -> None:
         await self.db[collection].create_index(key)
@@ -76,6 +78,6 @@ class MongoConnector:
         )
 
 
-@lru_cache()
+@lru_cache
 def get_mongo_connector() -> MongoConnector:
     return MongoConnector()

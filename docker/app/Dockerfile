@@ -6,3 +6,4 @@ RUN --mount=type=bind,source=.git,target=/src/.git \
     uv pip install /src --no-deps
 
 WORKDIR /src
+CMD python -m ropa.telegram_bot.bot.bot

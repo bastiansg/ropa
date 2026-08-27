@@ -7,3 +7,8 @@ from .size_table_extractor.size_table_extractor import (  # noqa
     SizeTableExtractor,
     SizeTableExtractorOutput,
 )
+from .ropa_assistant.ropa_assistant import (  # noqa
+    RopaAssistant,
+    RopaAssistantInput,
+    RopaAssistantOutput,
+)

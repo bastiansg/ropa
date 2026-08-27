@@ -1,3 +1,4 @@
+from collections.abc import KeysView
 from typing import Literal
 
 from pydantic import RootModel
@@ -33,7 +34,8 @@ Material = Literal[
 
 
 class MaterialMap(RootModel[dict[Material, list[str]]]):
-    pass
+    def __getitem__(self, material: Material) -> list[str]:
+        return self.root[material]
 
 
 MATERIAL_MAP = MaterialMap(
@@ -145,3 +147,21 @@ MATERIAL_MAP = MaterialMap(
         ],
     }
 )
+
+INVERTED_MATERIAL_MAP: dict[str, Material] = {
+    variant: material
+    for material, variants in MATERIAL_MAP.root.items()
+    for variant in variants
+}
+
+
+def get_material_variants(material: Material) -> list[str]:
+    return MATERIAL_MAP[material]
+
+
+def get_materials() -> KeysView[Material]:
+    return MATERIAL_MAP.root.keys()
+
+
+def get_parent_material(variant: str) -> Material:
+    return INVERTED_MATERIAL_MAP[variant]

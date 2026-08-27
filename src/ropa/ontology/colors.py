@@ -1,3 +1,4 @@
+from collections.abc import KeysView
 from typing import Literal
 
 from pydantic import RootModel
@@ -190,6 +191,10 @@ INVERTED_COLOR_MAP: dict[str, Color] = {
 
 def get_color_variants(color: Color) -> list[str]:
     return COLOR_MAP[color]
+
+
+def get_colors() -> KeysView[Color]:
+    return COLOR_MAP.root.keys()
 
 
 def get_parent_color(variant: str) -> Color:

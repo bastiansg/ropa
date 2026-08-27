@@ -1,3 +1,4 @@
+from collections.abc import KeysView
 from typing import Literal
 
 from pydantic import RootModel
@@ -15,7 +16,8 @@ ItemType = Literal[
 
 
 class ItemTypeMap(RootModel[dict[ItemType, list[str]]]):
-    pass
+    def __getitem__(self, item_type: ItemType) -> list[str]:
+        return self.root[item_type]
 
 
 ITEM_TYPE_MAP = ItemTypeMap(
@@ -88,3 +90,21 @@ ITEM_TYPE_MAP = ItemTypeMap(
         ],
     }
 )
+
+INVERTED_ITEM_TYPE_MAP: dict[str, ItemType] = {
+    variant: item_type
+    for item_type, variants in ITEM_TYPE_MAP.root.items()
+    for variant in variants
+}
+
+
+def get_item_type_variants(item_type: ItemType) -> list[str]:
+    return ITEM_TYPE_MAP[item_type]
+
+
+def get_item_types() -> KeysView[ItemType]:
+    return ITEM_TYPE_MAP.root.keys()
+
+
+def get_parent_item_type(variant: str) -> ItemType:
+    return INVERTED_ITEM_TYPE_MAP[variant]

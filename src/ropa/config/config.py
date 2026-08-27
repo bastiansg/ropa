@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings
 
 
 class Config(BaseSettings):
+    telegram_bot_token: StrictStr | None = None
+
     redis_host: StrictStr = "ropa-redis"
     redis_port: StrictInt = 6379
     redis_db: StrictInt = 0

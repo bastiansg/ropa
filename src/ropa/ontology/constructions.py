@@ -1,3 +1,4 @@
+from collections.abc import KeysView
 from typing import Literal
 
 from pydantic import RootModel
@@ -29,7 +30,8 @@ Construction = Literal[
 
 
 class ConstructionMap(RootModel[dict[Construction, list[str]]]):
-    pass
+    def __getitem__(self, construction: Construction) -> list[str]:
+        return self.root[construction]
 
 
 CONSTRUCTION_MAP = ConstructionMap(
@@ -108,3 +110,21 @@ CONSTRUCTION_MAP = ConstructionMap(
         ],
     }
 )
+
+INVERTED_CONSTRUCTION_MAP: dict[str, Construction] = {
+    variant: construction
+    for construction, variants in CONSTRUCTION_MAP.root.items()
+    for variant in variants
+}
+
+
+def get_construction_variants(construction: Construction) -> list[str]:
+    return CONSTRUCTION_MAP[construction]
+
+
+def get_constructions() -> KeysView[Construction]:
+    return CONSTRUCTION_MAP.root.keys()
+
+
+def get_parent_construction(variant: str) -> Construction:
+    return INVERTED_CONSTRUCTION_MAP[variant]
