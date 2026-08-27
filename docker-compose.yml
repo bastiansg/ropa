@@ -44,6 +44,8 @@ services:
             dockerfile: ./docker/app/Dockerfile
         env_file:
             - .env
+        volumes:
+            - $PWD/resources/generated/body-reconstructions:/src/resources/generated/body-reconstructions:ro
         restart: unless-stopped
         networks:
             - ropa

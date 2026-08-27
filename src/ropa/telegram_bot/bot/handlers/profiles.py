@@ -1,15 +1,21 @@
+import asyncio
+from contextlib import suppress
 from html import escape
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
 from telegram.ext import ContextTypes
 
 from ropa.db import get_mongo_connector
 from ropa.profiles import BodyProfile, Measurement
 
+from .utils import keep_uploading_photo
+
 PROFILE_COLLECTION = "profiles"
 PROFILE_CALLBACK_PREFIX = "profile:"
+BODY_RECONSTRUCTIONS_DIR = Path("resources/generated/body-reconstructions")
 
 
 def format_profile_option(profile: dict[str, Any]) -> str:
@@ -46,12 +52,24 @@ def format_profile_details(
         ("Foot length", format_measurement(profile.foot_length)),
         ("Neck circumference", format_measurement(profile.neck_circumference)),
     )
-    label_width = max(len(label) for label, _ in rows)
+    label_width = max(len(label) for label, _ in rows) + 1
     details = "\n".join(
-        f"{label.upper():<{label_width}}  {value}" for label, value in rows
+        f"{label + ':':<{label_width}}  {value}" for label, value in rows
     )
 
-    return f"Profile selected:\n\n<pre>{escape(details)}</pre>"
+    return f"<pre>{escape(details)}</pre>"
+
+
+def get_reconstruction_images(profile_id: str) -> tuple[Path, ...]:
+    reconstruction_directory = BODY_RECONSTRUCTIONS_DIR / profile_id
+    if not reconstruction_directory.is_dir():
+        return ()
+
+    return tuple(
+        path
+        for path in sorted(reconstruction_directory.iterdir())
+        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+    )
 
 
 async def show_profiles(
@@ -71,6 +89,11 @@ async def show_profiles(
 
         return
 
+    ordered_profiles = sorted(
+        profiles,
+        key=lambda profile: int(str(profile["_id"]).rsplit("-", maxsplit=1)[-1]),
+    )
+
     keyboard = [
         [
             InlineKeyboardButton(
@@ -78,7 +101,7 @@ async def show_profiles(
                 callback_data=f"{PROFILE_CALLBACK_PREFIX}{profile['_id']}",
             )
         ]
-        for profile in profiles
+        for profile in ordered_profiles
     ]
     await message.reply_text(
         "Select a profile:",
@@ -91,7 +114,8 @@ async def select_profile(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     query = update.callback_query
-    if query is None or query.data is None:
+    chat = update.effective_chat
+    if query is None or query.data is None or chat is None:
         return
 
     await query.answer()
@@ -111,8 +135,25 @@ async def select_profile(
     chat_data["profile"] = profile
     chat_data["session_id"] = str(uuid4())
 
-    await query.edit_message_text(
-        format_profile_details(
+    reconstruction_images = get_reconstruction_images(profile_id)
+    if reconstruction_images:
+        upload_task = asyncio.create_task(keep_uploading_photo(chat.id, context))
+        try:
+            await context.bot.send_media_group(
+                chat_id=chat.id,
+                media=tuple(
+                    InputMediaPhoto(image_path.read_bytes(), filename=image_path.name)
+                    for image_path in reconstruction_images
+                ),
+            )
+        finally:
+            upload_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await upload_task
+
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=format_profile_details(
             profile_id,
             str(document["gender"]),
             profile,

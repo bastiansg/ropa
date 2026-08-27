@@ -33,11 +33,10 @@ def render_header() -> None:
         cycle(ROPA_STYLES),
         strict=False,
     ):
-
         banner.append(f"{line}\n", style=style)
 
     banner.append(
-        "ROPA ASSISTANT".center(len(ROPA_BANNER[0])),
+        "R.O.P.A ASSISTANT".center(len(ROPA_BANNER[0])),
         style="dim bright_magenta",
     )
 
