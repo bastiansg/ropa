@@ -76,7 +76,7 @@ async def validate_recommended_item(
         stored_profile_gender,
     )
 
-    if recommended_item.gender != profile_gender:
+    if recommended_item.gender not in {profile_gender, "unisex"}:
         raise ValueError(
             f"Catalog item {recommended_item.document_id!r} has gender "
             f"{recommended_item.gender!r}, but profile {profile_id!r} has gender "

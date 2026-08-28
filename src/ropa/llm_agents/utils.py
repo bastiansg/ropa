@@ -13,10 +13,10 @@ TOOL_CALL_LIMIT = 20
 async def hide_tools_after_limit(
     ctx: RunContext,
     tool_defs: list[ToolDefinition],
-) -> list[ToolDefinition] | None:
+) -> list[ToolDefinition]:
     if ctx.usage.tool_calls >= TOOL_CALL_LIMIT:
         render_node_detail("tool_call_limit_reached", TOOL_CALL_LIMIT)
-        return None
+        return []
 
     return tool_defs
 

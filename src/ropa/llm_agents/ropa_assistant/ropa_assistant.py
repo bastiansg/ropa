@@ -5,7 +5,11 @@ from llm_agents.message_history import MongoDBMessageHistory
 from llm_agents.meta.interfaces import LLMAgent
 from pydantic import BaseModel, Field, StrictBool, StrictStr
 from pydantic_ai import Agent, NativeOutput, RunContext
-from pydantic_ai.capabilities import ReinjectSystemPrompt
+from pydantic_ai.capabilities import (
+    PrepareTools,
+    ProcessEventStream,
+    ReinjectSystemPrompt,
+)
 from pydantic_ai.models.openai import OpenAIChatModelSettings
 
 from ropa.llm_agents.tools import (
@@ -34,7 +38,7 @@ class RopaAssistantOutput(BaseModel):
 
 agent = Agent(
     name="ropa-assistant",
-    model="gpt-5.6-luna",
+    model="openai-chat:gpt-5.6-luna",
     model_settings=OpenAIChatModelSettings(openai_reasoning_effort="none"),
     system_prompt=LLMAgent.read_file(
         file_path=str(Path(__file__).with_name("system-prompt.md"))
@@ -49,9 +53,11 @@ agent = Agent(
         centimeters_to_eu_footwear_size_tool,
         centimeters_to_us_footwear_size_tool,
     ],
-    prepare_tools=hide_tools_after_limit,  # type: ignore
-    event_stream_handler=tool_logging_handler,  # type: ignore
-    capabilities=[ReinjectSystemPrompt()],
+    capabilities=[
+        PrepareTools(hide_tools_after_limit),  # type: ignore
+        ProcessEventStream(tool_logging_handler),  # type: ignore
+        ReinjectSystemPrompt(),
+    ],
 )
 
 

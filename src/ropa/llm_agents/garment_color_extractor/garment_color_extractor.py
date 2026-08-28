@@ -19,7 +19,7 @@ class GarmentColorExtractorOutput(BaseModel):
 
 agent = Agent(
     name="garment-color-extractor",
-    model="gpt-5.6-sol",
+    model="openai-chat:gpt-5.6-sol",
     model_settings=OpenAIChatModelSettings(openai_reasoning_effort="none"),
     system_prompt=LLMAgent.read_file(
         file_path=str(Path(__file__).with_name("system-prompt.md"))
