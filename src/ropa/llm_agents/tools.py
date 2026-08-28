@@ -27,6 +27,7 @@ from ropa.ontology.materials import (
 )
 from ropa.ontology.sizes import Size, get_size_variants, get_sizes
 from ropa.recommendations import RecommendedItem, store_recommendations
+from ropa.scripts.console import render_node_detail
 
 COLLECTION_NAME = "catalog_items"
 
@@ -44,10 +45,15 @@ class RecommendationReference(BaseModel):
     )
 
 
-async def get_catalog_schema() -> dict[str, Any]:
+async def get_catalog_schema() -> dict[str, str]:
     """Get the schema of catalog items available to search."""
 
-    return CatalogItem.model_json_schema(mode="serialization")
+    properties = CatalogItem.model_json_schema(mode="serialization")["properties"]
+
+    return {
+        field_name: field_schema["description"]
+        for field_name, field_schema in properties.items()
+    }
 
 
 def get_color_parent_values() -> list[Color]:
@@ -155,6 +161,7 @@ async def store_recommended_items(
             recommendations,
         )
     except ValueError as error:
+        render_node_detail("recommendation_validation_error", error)
         raise ModelRetry(
             f"Recommendation validation failed: {error} "
             "Remove incompatible items and call store_recommended_items again."

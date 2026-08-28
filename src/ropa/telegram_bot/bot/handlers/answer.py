@@ -37,8 +37,6 @@ def format_product(
         (
             f"<b>{index}. {escape(product.title)}</b>",
             "",
-            escape(product.description),
-            "",
             "<b>Matches:</b>",
             *(f"• {escape(match)}" for match in product.matches),
             "",
@@ -101,8 +99,18 @@ async def answer(
         return
 
     for index, product in enumerate(products, start=1):
+        product_message = format_product(index, product)
+        if product.image_urls:
+            await message.reply_photo(
+                photo=product.image_urls[0],
+                caption=product_message,
+                parse_mode="HTML",
+            )
+
+            continue
+
         await message.reply_text(
-            format_product(index, product),
+            product_message,
             parse_mode="HTML",
             disable_web_page_preview=True,
         )

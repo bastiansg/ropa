@@ -38,11 +38,8 @@ class RopaAssistantOutput(BaseModel):
 
 agent = Agent(
     name="ropa-assistant",
-    model="openai-chat:gpt-5.6-luna",
+    model="openai-chat:gpt-5.6-terra",
     model_settings=OpenAIChatModelSettings(openai_reasoning_effort="none"),
-    system_prompt=LLMAgent.read_file(
-        file_path=str(Path(__file__).with_name("system-prompt.md"))
-    ),
     deps_type=RopaAssistantDeps,
     output_type=NativeOutput(RopaAssistantOutput),
     retries=3,
@@ -56,12 +53,12 @@ agent = Agent(
     capabilities=[
         PrepareTools(hide_tools_after_limit),  # type: ignore
         ProcessEventStream(tool_logging_handler),  # type: ignore
-        ReinjectSystemPrompt(),
+        ReinjectSystemPrompt(replace_existing=True),
     ],
 )
 
 
-@agent.system_prompt
+@agent.system_prompt(dynamic=True)
 async def get_system_prompt(ctx: RunContext[RopaAssistantDeps]) -> str:
     system_prompt = LLMAgent.read_file(
         file_path=str(Path(__file__).with_name("system-prompt.md"))
