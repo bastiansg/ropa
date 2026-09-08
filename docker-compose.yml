@@ -45,7 +45,7 @@ services:
         env_file:
             - .env
         volumes:
-            - $PWD/resources/generated/body-reconstructions:/src/resources/generated/body-reconstructions:ro
+            - $PWD/resources/datasets/bodym/train:/src/resources/datasets/bodym/train:ro
         restart: unless-stopped
         networks:
             - ropa

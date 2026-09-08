@@ -10,5 +10,5 @@ async def start(
         return
 
     await update.message.reply_text(
-        "Use /profile to select a body profile, then send any garment question."
+        "Use /get_profile to get a body profile, then send any garment question."
     )

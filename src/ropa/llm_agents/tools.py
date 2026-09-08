@@ -157,7 +157,7 @@ async def store_recommended_items(
     try:
         return await store_recommendations(
             ctx.deps.request_id,
-            ctx.deps.profile_id,
+            ctx.deps.profile_gender,
             recommendations,
         )
     except ValueError as error:

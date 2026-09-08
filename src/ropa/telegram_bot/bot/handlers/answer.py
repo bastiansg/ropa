@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 from ropa.config import config
 from ropa.llm_agents import RopaAssistant, RopaAssistantDeps
 from ropa.llm_agents.tools import get_catalog_schema
-from ropa.profiles import BodyProfile
+from ropa.meta.interfaces import BodyProfile
 from ropa.recommendations import RecommendedItem, get_recommendations
 
 from .utils import keep_typing
@@ -61,14 +61,18 @@ async def answer(
 
     chat_data = context.chat_data
     profile = chat_data.get("profile") if chat_data is not None else None
+    profile_gender = (
+        chat_data.get("profile_gender") if chat_data is not None else None
+    )
     profile_id = chat_data.get("profile_id") if chat_data is not None else None
     session_id = chat_data.get("session_id") if chat_data is not None else None
     if (
         not isinstance(profile, BodyProfile)
+        or not isinstance(profile_gender, str)
         or not isinstance(profile_id, str)
         or not isinstance(session_id, str)
     ):
-        await message.reply_text("Select a body profile first with /profile.")
+        await message.reply_text("Get a body profile first with /get_profile.")
 
         return
 
@@ -82,6 +86,7 @@ async def answer(
                 agent_deps=RopaAssistantDeps(
                     catalog_schema=await get_catalog_schema(),
                     profile=profile,
+                    profile_gender=profile_gender,
                     profile_id=profile_id,
                     request_id=request_id,
                 ),

@@ -20,12 +20,13 @@ from ropa.llm_agents.tools import (
     store_recommended_items_tool,
 )
 from ropa.llm_agents.utils import hide_tools_after_limit, tool_logging_handler
-from ropa.profiles import BodyProfile
+from ropa.meta.interfaces import BodyProfile
 
 
 class RopaAssistantDeps(BaseModel):
     catalog_schema: dict[str, Any]
     profile: BodyProfile
+    profile_gender: StrictStr
     profile_id: StrictStr
     request_id: StrictStr
 
@@ -64,7 +65,9 @@ async def get_system_prompt(ctx: RunContext[RopaAssistantDeps]) -> str:
         file_path=str(Path(__file__).with_name("system-prompt.md"))
     )
 
-    return system_prompt.format(**ctx.deps.model_dump())
+    return system_prompt.format(
+        **ctx.deps.model_dump(),
+    )
 
 
 class RopaAssistant(LLMAgent[RopaAssistantDeps, RopaAssistantOutput]):

@@ -8,7 +8,7 @@ Recommend the best catalog garments for the user's request and body profile. Use
 
 # Hard Constraints
 
-- Consider a catalog item valid only when the user's profile measurements match a size in the item's `size_guide`.
+- Consider a catalog item valid only when the user's profile measurements match a size in the item's `size_guide` and that size is included in the item's `available_sizes`.
 
 # Tools
 
@@ -46,3 +46,7 @@ Catalog schema:
 User's body profile:
 
 {profile}
+
+User's catalog gender:
+
+{profile_gender}

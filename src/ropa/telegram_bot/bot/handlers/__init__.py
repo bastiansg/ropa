@@ -1,3 +1,3 @@
 from .answer import answer  # noqa
-from .profiles import select_profile, show_profiles  # noqa
+from .profiles import get_profile  # noqa
 from .start import start  # noqa
