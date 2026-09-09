@@ -1,8 +1,9 @@
 {
     "name": "ropa",
-    "initializeCommand": "make core-build",
-    "dockerComposeFile": "docker-compose.yml",
+    "initializeCommand": "make devcontainer-build",
+    "dockerComposeFile": "../docker-compose.yml",
     "service": "ropa-devcontainer",
+    "runServices": ["ropa-devcontainer"],
     "workspaceFolder": "/workspace",
     "customizations": {
         "vscode": {
@@ -12,8 +13,7 @@
                 "files.trimTrailingWhitespace": true,
                 "files.watcherExclude": {
                     ".git/**": true,
-                    "./resources/**": true,
-                    "./notebooks/**": true
+                    "./resources/**": true
                 },
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff",

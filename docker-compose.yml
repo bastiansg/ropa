@@ -4,9 +4,25 @@ services:
         container_name: ropa-core
         build:
             context: .
-            dockerfile: ./docker/core/Dockerfile
+            dockerfile: Dockerfile
+            target: core
         env_file:
             - .env
+        networks:
+            - ropa
+
+    ropa-devcontainer:
+        image: ropa-devcontainer
+        container_name: ropa-devcontainer
+        build:
+            context: .
+            dockerfile: Dockerfile
+            target: devcontainer
+        volumes:
+            - .:/workspace:cached
+        env_file:
+            - .env
+        entrypoint: ["tail", "-f", "/dev/null"]
         networks:
             - ropa
 
@@ -41,7 +57,8 @@ services:
         container_name: ropa-app
         build:
             context: .
-            dockerfile: ./docker/app/Dockerfile
+            dockerfile: Dockerfile
+            target: app
         env_file:
             - .env
         volumes:
