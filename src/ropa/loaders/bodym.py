@@ -116,3 +116,6 @@ class BodyMLoader(BodyProfileLoader):
             self.train_directory / "mask" / filename,
             self.train_directory / "mask_left" / filename,
         )
+
+    def get_preprocessed_mask_path(self, profile: BodyMProfile) -> Path:
+        return self.train_directory / "mask_preprocessed" / f"{profile.photo_id}.png"

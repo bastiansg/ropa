@@ -1,0 +1,10 @@
+{
+    "filter": {
+        "gender": "man",
+        "item_type": {
+            "$in": ["jean", "jeans", "denim"]
+        },
+        "color_family": "black"
+    },
+    "limit": 50
+}

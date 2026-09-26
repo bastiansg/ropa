@@ -36,6 +36,8 @@ Only training data is present at `resources/datasets/bodym/train/`. Counts below
 
 All three CSV files use `subject_id` as the subject-level join key. `subject_to_photo_map.csv` associates each subject with one or more `photo_id` values; that value is the filename stem shared by its frontal and left-side masks.
 
+`make preprocess-bodym-masks` generates display images in `mask_preprocessed/<photo_id>.png`, preserving the original filenames and dimensions. These derivatives use an abstract, vertically symmetric silhouette on black, colored cyan for male subjects and magenta for female subjects according to `hwg_metadata.csv`. The Telegram bot displays the preprocessed front image when presenting a body profile. Original masks remain available for analysis.
+
 ## Measurement columns
 
 `measurements.csv` contains the following measurements, all in centimeters:[^aws-registry]

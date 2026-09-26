@@ -2,31 +2,22 @@ import asyncio
 from contextlib import suppress
 from functools import lru_cache
 from html import escape
-from uuid import uuid4
 
-from llm_agents.message_history import MongoDBMessageHistory
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-from ropa.config import config
-from ropa.llm_agents import RopaAssistant, RopaAssistantDeps
+from ropa.llm_agents import Assistant, AssistantDeps
 from ropa.llm_agents.tools import get_catalog_schema
 from ropa.meta.interfaces import BodyProfile
-from ropa.recommendations import RecommendedItem, get_recommendations
+from ropa.recommendations import RecommendedItem
 
 from .utils import keep_typing
 
 
 @lru_cache(maxsize=10)
-def get_assistant(session_id: str) -> RopaAssistant:
-    return RopaAssistant(
-        mongodb_message_history=MongoDBMessageHistory(
-            session_id=session_id,
-            mongodb_dsn=config.mongodb_dsn,
-            mongodb_db_name=config.mongodb_db_name,
-            # save_tool_messages=True,
-        ),
-    )
+def get_assistant(session_id: str) -> Assistant:
+    return Assistant()
 
 
 def format_product(
@@ -35,7 +26,7 @@ def format_product(
 ) -> str:
     return "\n".join(
         (
-            f"<b>{index}. {escape(product.title)}</b>",
+            f"<b>{index}. {escape(product.title)} // {escape(product.gender)}</b>",
             "",
             "<b>Matches:</b>",
             *(f"• {escape(match)}" for match in product.matches),
@@ -77,26 +68,23 @@ async def answer(
         return
 
     assistant = get_assistant(session_id=session_id)
-    request_id = str(uuid4())
     typing_task = asyncio.create_task(keep_typing(chat.id, context))
     try:
-        async with assistant.agent:
-            await assistant.generate(
-                user_prompt=f"User's request: {message.text}",
-                agent_deps=RopaAssistantDeps(
-                    catalog_schema=await get_catalog_schema(),
-                    profile=profile,
-                    profile_gender=profile_gender,
-                    profile_id=profile_id,
-                    request_id=request_id,
-                ),
-            )
+        output = await assistant.generate(
+            user_prompt=f"User's request: {message.text}",
+            agent_deps=AssistantDeps(
+                catalog_schema=await get_catalog_schema(),
+                profile=profile,
+                profile_gender=profile_gender,
+                profile_id=profile_id,
+            ),
+        )
     finally:
         typing_task.cancel()
         with suppress(asyncio.CancelledError):
             await typing_task
 
-    products = await get_recommendations(request_id)
+    products = output.recommendations
 
     if not products:
         await message.reply_text("No suitable products were found.")
@@ -106,13 +94,17 @@ async def answer(
     for index, product in enumerate(products, start=1):
         product_message = format_product(index, product)
         if product.image_urls:
-            await message.reply_photo(
-                photo=product.image_urls[0],
-                caption=product_message,
-                parse_mode="HTML",
-            )
+            try:
+                await message.reply_photo(
+                    photo=product.image_urls[0],
+                    caption=product_message,
+                    parse_mode="HTML",
+                )
 
-            continue
+                continue
+            except BadRequest as error:
+                if "failed to get http url content" not in str(error).lower():
+                    raise
 
         await message.reply_text(
             product_message,

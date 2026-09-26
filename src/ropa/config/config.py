@@ -17,9 +17,6 @@ class Config(BaseSettings):
 
     bodym_train_directory: Path = Path("resources/datasets/bodym/train")
 
-    recommendations_ttl_seconds: StrictInt = 900
-    recommendations_cache_namespace: StrictStr = "recommendations"
-    profile_collection_name: StrictStr = "profiles"
     gender_aliases: dict[StrictStr, StrictStr] = {
         "female": "woman",
         "male": "man",

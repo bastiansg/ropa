@@ -1,13 +1,14 @@
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, StrictStr
-from pydantic_ai import ModelRetry, RunContext, Tool
+from pydantic import Field
+from pydantic_ai import Tool
 
 from ropa.conversions import (
     centimeters_to_eu_footwear_size,
     centimeters_to_us_footwear_size,
 )
 from ropa.db import get_mongo_connector
+from ropa.llm_agents.catalog_filters import validate_catalog_filter
 from ropa.meta.interfaces.catalog import CatalogItem
 from ropa.ontology.colors import Color, get_color_variants, get_colors
 from ropa.ontology.constructions import (
@@ -26,23 +27,8 @@ from ropa.ontology.materials import (
     get_materials,
 )
 from ropa.ontology.sizes import Size, get_size_variants, get_sizes
-from ropa.recommendations import RecommendedItem, store_recommendations
-from ropa.scripts.console import render_node_detail
 
 COLLECTION_NAME = "catalog_items"
-
-
-class RecommendationReference(BaseModel):
-    document_id: StrictStr = Field(
-        alias="_id",
-        description="MongoDB `_id` value of the recommended catalog document.",
-    )
-
-    matches: list[StrictStr] = Field(
-        description=(
-            "Catalog values from the document that match the user's query."
-        ),
-    )
 
 
 async def get_catalog_schema() -> dict[str, str]:
@@ -105,6 +91,7 @@ async def search_catalog(
         limit: Maximum number of catalog items to return. 0 applies no limit.
     """
 
+    validate_catalog_filter(filter)
     cursor = get_mongo_connector().find_multiple(
         COLLECTION_NAME,
         filter=filter,
@@ -112,60 +99,6 @@ async def search_catalog(
     )
 
     return await cursor.to_list()
-
-
-async def store_recommended_items(
-    ctx: RunContext[Any],
-    recommended_items: Annotated[
-        list[RecommendationReference],
-        Field(description="Recommended documents ordered by relevance."),
-    ],
-) -> int:
-    document_ids = [item.document_id for item in recommended_items]
-    documents = (
-        await get_mongo_connector()
-        .find_multiple(
-            COLLECTION_NAME,
-            {"_id": {"$in": document_ids}},
-        )
-        .to_list()
-    )
-
-    documents_by_id = {str(document["_id"]): document for document in documents}
-    missing_document_ids = [
-        document_id
-        for document_id in document_ids
-        if document_id not in documents_by_id
-    ]
-    if missing_document_ids:
-        raise ValueError(
-            "Catalog documents were not found: "
-            f"{', '.join(missing_document_ids)}."
-        )
-
-    recommendations = [
-        RecommendedItem.model_validate(
-            {
-                **documents_by_id[item.document_id],
-                "_id": item.document_id,
-                "matches": item.matches,
-            }
-        )
-        for item in recommended_items
-    ]
-
-    try:
-        return await store_recommendations(
-            ctx.deps.request_id,
-            ctx.deps.profile_gender,
-            recommendations,
-        )
-    except ValueError as error:
-        render_node_detail("recommendation_validation_error", error)
-        raise ModelRetry(
-            f"Recommendation validation failed: {error} "
-            "Remove incompatible items and call store_recommended_items again."
-        ) from error
 
 
 get_catalog_schema_tool = Tool(
@@ -180,15 +113,6 @@ search_catalog_tool = Tool(
     description="Search the catalog with an arbitrary MongoDB find query.",
     docstring_format="google",
     require_parameter_descriptions=True,
-)
-
-store_recommended_items_tool = Tool(
-    function=store_recommended_items,
-    description=(
-        "Store ordered catalog recommendations with the catalog values matching "
-        "the user's request."
-    ),
-    max_retries=3,
 )
 
 centimeters_to_eu_footwear_size_tool = Tool(

@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 from ropa.config import config
 from ropa.db import get_mongo_connector
-from ropa.llm_agents import SizeTableExtractor
+from ropa.llm_agents import get_size_table_extractor
 from ropa.scripts.console import render_step
 
 COLLECTION_NAME = "catalog_items"
@@ -38,7 +38,7 @@ RANGE_PATTERN = re.compile(
     r"[-–—]\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:cm)?\s*$"
 )
 
-size_table_extractor = SizeTableExtractor()
+size_table_extractor = get_size_table_extractor()
 console = Console(stderr=True)
 
 
@@ -176,15 +176,14 @@ async def extract_size_guide(
             f"{image_url} returned unsupported content type {media_type or 'unknown'}"
         )
 
-    output = await size_table_extractor.generate_cached(
-        user_prompt="Extract the complete clothing size table from this image.",
-        user_content=BinaryContent(
-            data=response.content,
-            media_type=media_type,
-        ),
+    result = await size_table_extractor.run(
+        [
+            "Extract the complete clothing size table from this image.",
+            BinaryContent(data=response.content, media_type=media_type),
+        ],
     )
 
-    return output.data
+    return result.output.data
 
 
 def measurement_value(value: object) -> object:

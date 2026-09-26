@@ -1,4 +1,4 @@
-.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats size-guide-stats reconstruct-body generate-body-profiles
+.PHONY: core-build core-run app-build app-run app-up app-stop app-restart devcontainer-build collect-data collect-ay-not-dead collect-bolivia-universo collect-ropa-revolver extract-size-guides catalog-stats size-guide-stats print-body-profiles preprocess-bodym-masks reconstruct-body generate-body-profiles
 
 
 core-build:
@@ -69,6 +69,12 @@ catalog-stats: devcontainer-build mongo-start
 
 size-guide-stats: devcontainer-build mongo-start
 	docker compose run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.size_guide_stats" ropa-devcontainer
+
+print-body-profiles: devcontainer-build
+	docker compose run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.print_body_profiles" ropa-devcontainer
+
+preprocess-bodym-masks: devcontainer-build
+	docker compose run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.preprocess_bodym_masks" ropa-devcontainer
 
 reconstruct-body: devcontainer-build redis-start
 	docker compose run --rm --entrypoint="env PYTHONPATH=/workspace/src python -m ropa.scripts.reconstruct_body" ropa-devcontainer

@@ -19,7 +19,7 @@ from rich.text import Text
 from tqdm import tqdm
 
 from ropa.config import config
-from ropa.llm_agents import GarmentColorExtractor, GarmentColorExtractorInput
+from ropa.llm_agents import GarmentColorExtractorInput, get_garment_color_extractor
 from ropa.meta.interfaces import CatalogCollector, CatalogItem
 
 BASE_URL = "https://boliviauniverso.com"
@@ -60,7 +60,23 @@ ITEM_CATEGORY_PATTERN = re.compile(
 )
 
 console = Console(stderr=True)
-garment_color_extractor = GarmentColorExtractor()
+garment_color_extractor = get_garment_color_extractor()
+
+
+@cached_stampede(
+    cache=Cache.REDIS,
+    endpoint=config.redis_host,
+    port=config.redis_port,
+    db=config.redis_db,
+    namespace="garment_color_extractor",
+)
+async def _extract_garment_color(title: str, description: str, image_url: str) -> str:
+    result = await garment_color_extractor.run(
+        ["Identify the color of the described garment.", ImageUrl(url=image_url)],
+        deps=GarmentColorExtractorInput(title=title, description=description),
+    )
+
+    return result.output.color
 
 
 class _TransientHTTPStatusError(Exception):
@@ -504,15 +520,8 @@ class BoliviaUniversoCollector(CatalogCollector):
         colors = tuple(dict.fromkeys(parser.colors))
 
         if tuple(map(str.casefold, colors)) == ("color unico",):
-            output = await garment_color_extractor.generate_cached(
-                user_prompt="Identify the color of the described garment.",
-                agent_deps=GarmentColorExtractorInput(
-                    title=title,
-                    description=description,
-                ),
-                user_content=ImageUrl(url=image_urls[0]),
-            )
-            colors = (output.color,)
+            color = await _extract_garment_color(title, description, image_urls[0])
+            colors = (color,)
 
         return CatalogItem(
             vendor=VENDOR,

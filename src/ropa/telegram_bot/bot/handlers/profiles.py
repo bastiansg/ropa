@@ -1,7 +1,7 @@
 from html import escape
 from uuid import uuid4
 
-from telegram import InputMediaPhoto, Update
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from ropa.config import config
@@ -71,11 +71,10 @@ async def get_profile(
         ),
         parse_mode="HTML",
     )
-    await message.reply_media_group(
-        media=tuple(
-            InputMediaPhoto(mask_path.read_bytes(), filename=mask_path.name)
-            for mask_path in BODYM_LOADER.get_mask_paths(profile)
-        ),
+    mask_path = BODYM_LOADER.get_preprocessed_mask_path(profile)
+    await message.reply_photo(
+        photo=mask_path.read_bytes(),
+        filename=mask_path.name,
         read_timeout=config.telegram_media_timeout_seconds,
         write_timeout=config.telegram_media_timeout_seconds,
     )

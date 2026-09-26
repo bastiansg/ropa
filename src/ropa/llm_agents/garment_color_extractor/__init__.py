@@ -1,5 +1,5 @@
 from .garment_color_extractor import (  # noqa
-    GarmentColorExtractor,
     GarmentColorExtractorInput,
     GarmentColorExtractorOutput,
+    get_garment_color_extractor,
 )

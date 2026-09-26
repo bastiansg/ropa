@@ -7,7 +7,7 @@ from pydantic_ai.messages import AgentStreamEvent
 
 from ropa.scripts.console import render_node_detail, render_tool_call
 
-TOOL_CALL_LIMIT = 20
+TOOL_CALL_LIMIT = 50
 
 
 async def hide_tools_after_limit(
